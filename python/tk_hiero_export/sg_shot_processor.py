@@ -18,6 +18,10 @@ from hiero.core import FnExporterBase
 
 from hiero.exporters import FnShotProcessor
 
+###DPS Imports for cut generation
+from datetime import datetime, timedelta
+
+
 # For Hiero versions prior to 9.0 the ShotProcessor class
 # contained both the execution and UI logic. That was split
 # into two classes in 9.0. To maintain backwards compatibility
@@ -34,6 +38,7 @@ except ImportError:
 
 from .base import ShotgunHieroObjectBase
 from .version_creator import ShotgunTranscodeExporter
+from .sg_copy_exporter import ShotgunCopyExporter
 from .shot_updater import ShotgunShotUpdaterPreset
 from .shot_updater import ShotgunShotUpdater
 from .collating_exporter import CollatedShotPreset
@@ -461,6 +466,9 @@ class ShotgunShotProcessor(ShotgunHieroObjectBase, FnShotProcessor.ShotProcessor
                 # transcode
                 elif isinstance(task, ShotgunTranscodeExporter):
                     transcode_task = task
+                # DPS CopyExporter
+                elif isinstance(task, ShotgunCopyExporter):
+                    transcode_task = task
 
                 if shot_updater_task:
                     # make the shot updater tasks aware of whether only the cut length
@@ -721,6 +729,13 @@ class ShotgunShotProcessor(ShotgunHieroObjectBase, FnShotProcessor.ShotProcessor
         # list of cut item data
         cut_item_data_list = []
 
+        #DPS get sequence timecodes for cut export
+        sequence = hiero.ui.activeSequence()
+        timecodeStart = self._timecode(sequence.timecodeStart(), fps, drop_frame)
+        seqduration = sequence.duration()
+        en = sequence.timecodeStart() + seqduration
+        timecodeEnd = self._timecode(en, fps, drop_frame)
+
         # process the tasks in order
         for (shot_updater_task, transcode_task) in cut_related_tasks:
 
@@ -790,32 +805,111 @@ class ShotgunShotProcessor(ShotgunHieroObjectBase, FnShotProcessor.ShotProcessor
 
             if cut_order == 1:
                 # first item in the cut, set the cut's start timecode
-                cut_data["timecode_start_text"] = tc_edit_in
+                # cut_data["timecode_start_text"] = tc_edit_in
 
                 # let the first shot_updater be responsible for uploading
                 # a thumbnail for the Cut
                 shot_updater_task._create_cut_thumbnail = True
 
-            if cut_order == len(cut_related_tasks):
-                # last item in the cut, set the cut's end timecode
-                cut_data["timecode_end_text"] = tc_edit_out
+            # if cut_order == len(cut_related_tasks):
+            #     # last item in the cut, set the cut's end timecode
+            #     # cut_data["timecode_end_text"] = tc_edit_out
+            #     cut_data["timecode_end_text"] = timecodeEnd
 
             cut_item_data_list.append(cut_item_data)
 
         # all tasks processed, add the duration to the cut data
-        cut_data["duration"] = cut_duration
+        cut_data["timecode_start_text"] = timecodeStart
+        cut_data["timecode_end_text"] = timecodeEnd
+        cut_data["duration"] = seqduration
 
         # create the cut to get the id.
         sg = self.app.shotgun
         cut = sg.create("Cut", cut_data)
-        self._app.log_debug("Created Cut in Flow Production Tracking: %s" % (cut,))
-        self._app.log_info(
-            "Created Cut '%s' in Flow Production Tracking!" % (cut["code"],)
-        )
+        self._app.log_debug("Created Cut in ShotGrid: %s" % (cut,))
+        self._app.log_info("Created Cut '%s' in ShotGrid!" % (cut["code"],))
+
+
+
+        try:
+            itemsL = []
+            for a, c in enumerate(cut_item_data_list):
+                entry = {}
+                entry["start"] = c["timecode_edit_in_text"]
+                entry["startf"] = c["edit_in"]
+                entry["end"] = c["timecode_edit_out_text"]
+                entry["endf"] = c["edit_out"]
+                entry["index"] = a
+                itemsL.append(entry)
+
+            # Convert timecodes to datetime objects for easier manipulation
+            timecodeStart_dt = datetime.strptime(timecodeStart, "%H:%M:%S:%f")
+            timecodeEnd_dt = datetime.strptime(timecodeEnd, "%H:%M:%S:%f")
+
+            for item_idx, itemL in enumerate(itemsL):
+                item_start_dt = itemL["startf"]
+                item_end_dt = itemL["endf"]
+
+                # Generate the previous and next item (if any) to fill the gaps
+                if item_idx == 0:
+                    prev_item_end_dt = sequence.timecodeStart()
+                else:
+                    prev_item_end_dt = itemsL[item_idx - 1]["endf"]
+
+                if item_idx == len(itemsL) - 1:
+                    next_item_start_dt = en
+                else:
+                    next_item_start_dt = itemsL[item_idx + 1]["startf"]
+
+                # Generate the start and end timecodes for the gap items
+                gap1_start_dt = prev_item_end_dt
+                gap1_end_dt = item_start_dt
+                gap2_start_dt = item_end_dt
+                gap2_end_dt = next_item_start_dt
+
+                # Convert gap timecodes to frames using the fps variable
+                gap1_start_f = prev_item_end_dt
+                gap1_end_f = item_start_dt
+                gap1_duration = gap1_end_f - gap1_start_f + 1
+                gap2_start_f = item_end_dt
+                gap2_end_f = next_item_start_dt
+                gap2_duration = gap2_end_f - gap2_start_f + 1
+
+                # Convert gap frames to timecodes
+                cut_orderS = cut_item_data_list[itemL["index"]]["cut_order"]
+                if itemL["startf"] == sequence.timecodeStart():
+                    print("no initial clip")
+                else:
+                    if gap1_end_f - gap1_start_f > 1:
+                        gap1_start = self._timecode(gap1_start_f, fps, drop_frame)
+                        gap1_end = self._timecode(gap1_end_f, fps, drop_frame)
+                        if item_idx != 0:
+                            cut_order = cut_item_data_list[itemL["index"]-1]["cut_order"]+1
+                        else:
+                            cut_order = 1
+                        cut_orderS = cut_order+1
+                        data1 = {"timecode_cut_item_in_text": gap1_start, "timecode_cut_item_out_text": gap1_end, "timecode_edit_in_text": gap1_start, "timecode_edit_out_text": gap1_end, "cut": {"id": cut["id"], "type": "Cut"}, "project": self.app.context.project, "cut_order": cut_order, "cut_item_in": gap1_start_f, "cut_item_out": gap1_end_f, "cut_item_duration": gap1_duration, "edit_in": gap1_start_f-sequence.timecodeStart()+1, "edit_out": gap1_end_f-sequence.timecodeStart()-1}
+                        sg.create("CutItem", data1)
+                        cut_item_data_list[itemL["index"]]["cut_order"] = cut_orderS
+
+                if itemL["endf"] == (en-sequence.timecodeStart()):
+                    print("no final clip")
+                else:
+                    if item_idx == len(itemsL) - 1:
+                        gap2_start = self._timecode(gap2_start_f, fps, drop_frame)
+                        gap2_end = self._timecode(gap2_end_f, fps, drop_frame)
+                        cut_order = cut_orderS + 1
+                        data2 = {"timecode_cut_item_in_text": gap2_start, "timecode_cut_item_out_text": gap2_end, "timecode_edit_in_text": gap2_start, "timecode_edit_out_text": gap2_end, "cut": {"id": cut["id"], "type": "Cut"}, "project": self.app.context.project, "cut_order": cut_order, "cut_item_in": gap2_start_f, "cut_item_out": gap2_end_f, "cut_item_duration": gap2_duration, "edit_in": gap2_start_f-sequence.timecodeStart()+1, "edit_out": gap2_end_f-sequence.timecodeStart()-1}
+                        sg.create("CutItem", data2)
+
+        except Exception as e:
+            print (e)
 
         # make sure the cut item data dicts are updated with the cut info
         for cut_item_data in cut_item_data_list:
             cut_item_data["cut"] = {"id": cut["id"], "type": "Cut"}
+            cut_item_data["edit_in"] = cut_item_data["edit_in"]-sequence.timecodeStart()
+            cut_item_data["edit_out"] = cut_item_data["edit_out"] -sequence.timecodeStart()
 
     def _timecode(self, frame, fps, drop_frame=False):
         """Convenience wrapper to convert a given frame and fps to a timecode.
@@ -855,7 +949,7 @@ class ShotgunShotProcessorPreset(
         # the standard task statuses in Shotgun. If a user wants
         # to change these, they can just create a new preset :)
         default_properties["sg_status_hiero_tags"] = [
-            ("Ready To Start", "rdy"),
+            ("Ready To Start", "rts"),
             ("In Progress", "ip"),
             ("On Hold", "hld"),
             ("Final", "fin"),

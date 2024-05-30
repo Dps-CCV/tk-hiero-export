@@ -130,12 +130,18 @@ class ShotgunAudioExporter(
         # see if we get a task to use
         self._sg_task = None
         try:
-            task_filter = self.app.get_setting("default_task_filter", "[]")
-            task_filter = ast.literal_eval(task_filter)
-            task_filter.append(["entity", "is", self._sg_shot])
-            tasks = self.app.shotgun.find("Task", task_filter)
-            if len(tasks) == 1:
+            if '_VREF_' in os.path.basename(self._resolved_export_path) or '_SOUNDS_' in os.path.basename(self._resolved_export_path):
+                tasks = self.app.shotgun.find("Task",
+                                              [['step.Step.code', 'is', 'VREF'], ['content', 'contains', '_VREF'],
+                                               ["entity", "is", self._sg_shot]], ['content'])
+            else:
+                tasks = self.app.shotgun.find("Task", [['step.Step.code', 'is', 'EDITORIAL'],
+                                                       ['content', 'contains', '_SOURCE'],
+                                                       ["entity", "is", self._sg_shot]], ['content'])
+            if len(tasks) > 0:
                 self._sg_task = tasks[0]
+                status = {"sg_status_list": "psu"}
+                self.app.shotgun.update("Task", tasks[0]['id'], status)
         except ValueError:
             # continue without task
             setting = self.app.get_setting("default_task_filter", "[]")
@@ -280,12 +286,12 @@ class ShotgunAudioExporter(
         published_file_type = self.app.get_setting(
             "audio_published_file_type", "Hiero Audio"
         )
-
+        basename = os.path.splitext(os.path.basename(self._resolved_export_path))[0]
         args = {
             "tk": self.app.tank,
             "context": ctx,
             "path": self._resolved_export_path,
-            "name": os.path.basename(self._resolved_export_path),
+            "name": '_'.join(basename.split('_')[:-1]),
             "version_number": int(self._tk_version),
             "published_file_type": published_file_type,
         }

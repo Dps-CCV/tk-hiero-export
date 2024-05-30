@@ -28,6 +28,7 @@ import hiero.core
 import hiero.exporters
 
 from hiero.exporters import FnExternalRender
+from hiero.exporters import FnFrameExporter
 from hiero.exporters import FnNukeShotExporter
 
 # do not use tk import here, hiero needs the classes to be in their
@@ -39,14 +40,17 @@ from tk_hiero_export import (
     ShotgunShotProcessorUI,
     ShotgunShotUpdater,
     ShotgunTranscodePreset,
+    ShotgunCopyPreset,
     ShotgunNukeShotPreset,
     ShotgunAudioPreset,
     ShotgunShotUpdaterPreset,
     ShotgunTranscodeExporter,
+    ShotgunCopyExporter,
     ShotgunNukeShotExporter,
     ShotgunAudioExporter,
     ShotgunShotProcessorPreset,
     ShotgunTranscodeExporterUI,
+    ShotgunCopyExporterUI,
     ShotgunNukeShotExporterUI,
     ShotgunAudioExporterUI,
     ShotgunHieroObjectBase,
@@ -158,9 +162,8 @@ class HieroExport(Application):
         hiero.core.taskRegistry.registerTask(
             ShotgunShotUpdaterPreset, ShotgunShotUpdater
         )
-        hiero.core.taskRegistry.registerTask(
-            ShotgunTranscodePreset, ShotgunTranscodeExporter
-        )
+        hiero.core.taskRegistry.registerTask(ShotgunTranscodePreset, ShotgunTranscodeExporter)
+        hiero.core.taskRegistry.registerTask(ShotgunCopyPreset, ShotgunCopyExporter)
         hiero.core.taskRegistry.registerTask(
             ShotgunNukeShotPreset, ShotgunNukeShotExporter
         )
@@ -172,9 +175,8 @@ class HieroExport(Application):
         hiero.ui.taskUIRegistry.registerTaskUI(
             ShotgunTranscodePreset, ShotgunTranscodeExporterUI
         )
-        hiero.ui.taskUIRegistry.registerTaskUI(
-            ShotgunNukeShotPreset, ShotgunNukeShotExporterUI
-        )
+        hiero.ui.taskUIRegistry.registerTaskUI(ShotgunCopyPreset, ShotgunCopyExporterUI)
+        hiero.ui.taskUIRegistry.registerTaskUI(ShotgunNukeShotPreset, ShotgunNukeShotExporterUI)
         hiero.ui.taskUIRegistry.registerTaskUI(
             ShotgunAudioPreset, ShotgunAudioExporterUI
         )
@@ -204,8 +206,11 @@ class HieroExport(Application):
         if overwrite or name not in localpresets:
             # grab all our path templates
             plate_template = self.get_template("template_plate_path")
+            plate2_template = self.get_template("template_plate2_path")
             script_template = self.get_template("template_nuke_script_path")
             render_template = self.get_template("template_render_path")
+            layer_template = self.get_template("template_layer_path")
+            sound_template = self.get_template("template_sound_path")
 
             # call the hook to translate them into hiero paths, using hiero keywords
             plate_hiero_str = self.execute_hook(
@@ -227,10 +232,35 @@ class HieroExport(Application):
             )
             self.log_debug("Translated %s --> %s" % (render_template, render_hiero_str))
 
+            layer_hiero_str = self.execute_hook(
+                "hook_translate_template",
+                template=layer_template,
+                output_type="render",
+            )
+            self.log_debug("Translated %s --> %s" % (layer_template, layer_hiero_str))
+
+            plate2_hiero_str = self.execute_hook(
+                "hook_translate_template",
+                template=plate2_template,
+                output_type="plate",
+            )
+            self.log_debug("Translated %s --> %s" % (plate2_template, plate2_hiero_str))
+
+            sound_hiero_str = self.execute_hook(
+                "hook_translate_template",
+                template=sound_template,
+                output_type="sound",
+            )
+            self.log_debug("Translated %s --> %s" % (sound_template, sound_hiero_str))
+
+
             # check so that no unknown keywords exist in the templates after translation
             self._validate_hiero_export_template(plate_hiero_str)
             self._validate_hiero_export_template(script_hiero_str)
             self._validate_hiero_export_template(render_hiero_str)
+            self._validate_hiero_export_template(layer_hiero_str)
+            self._validate_hiero_export_template(plate2_hiero_str)
+            self._validate_hiero_export_template(sound_hiero_str)
 
             # and set the default properties to be based off of those templates
 
@@ -247,7 +277,7 @@ class HieroExport(Application):
                     (
                         render_hiero_str,
                         FnExternalRender.NukeRenderPreset(
-                            "", {"file_type": "dpx", "dpx": {"datatype": "10 bit"}}
+                            "", {"file_type": "exr", "exr": {"datatype": "16 bit"}}
                         ),
                     ),
                     (

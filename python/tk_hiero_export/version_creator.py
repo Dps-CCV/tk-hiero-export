@@ -14,6 +14,8 @@ import sys
 import shutil
 import tempfile
 import inspect
+import random
+import string
 
 from hiero.exporters import FnExternalRender
 from hiero.exporters import FnTranscodeExporter
@@ -186,10 +188,14 @@ class ShotgunTranscodeExporter(
             self._quicktime_path = self.resolvedExportPath()
             self._temp_quicktime = False
             return
-
-        self._quicktime_path = os.path.join(tempfile.mkdtemp(), "preview.mov")
+        randomName = ''.join(random.choices(string.ascii_lowercase, k=5))
+        baseName = randomName + '_' + 'preview.mov'
+        self._quicktime_path = os.path.join("C:\\TEMP_HIERO", baseName)
+        #self._quicktime_path = os.path.join(tempfile.mkdtemp(), "preview.mov")
         self._temp_quicktime = True
-        nodeName = "PTR Screening Room Media"
+        if not os.path.exists("C:\\TEMP_HIERO\\"):
+            os.makedirs("C:\\TEMP_HIERO\\")
+        nodeName = "SG Screening Room Media"
 
         framerate = None
         if self._sequence:
@@ -212,9 +218,8 @@ class ShotgunTranscodeExporter(
             {
                 "file_type": file_type,
                 file_type: properties,
-            }
-        )
-
+        })
+        preset.properties()["colourspace"] = "Output - Rec.709"
         # Sadly Foundry has a habit of changing the interfaces of
         # their Python classes out from under us, so now we're going
         # to have to handle this the ugly way, via introspecting the
@@ -314,7 +319,12 @@ class ShotgunTranscodeExporter(
             task=self,
             item=item,
             data=self.app.preprocess_data,
-            fields=["sg_head_in", "sg_tail_out"],
+            fields=[
+                "sg_head_in",
+                "sg_tail_out",
+                "sg_cut_in",
+                "sg_cut_out"
+            ],
             base_class=HieroGetShot,
         )
 
@@ -323,12 +333,14 @@ class ShotgunTranscodeExporter(
         # see if we get a task to use
         self._sg_task = None
         try:
-            task_filter = self.app.get_setting("default_task_filter", "[]")
-            task_filter = ast.literal_eval(task_filter)
-            task_filter.append(["entity", "is", self._sg_shot])
-            tasks = self.app.shotgun.find("Task", task_filter)
-            if len(tasks) == 1:
+            if '_VREF_' in os.path.basename(self._resolved_export_path) or '_SOUNDS_' in os.path.basename(self._resolved_export_path):
+                tasks = self.app.shotgun.find("Task", [['step.Step.code', 'is', 'VREF'], ['content', 'contains', '_VREF'], ["entity", "is", self._sg_shot]], ['content'])
+            else:
+                tasks = self.app.shotgun.find("Task", [['step.Step.code', 'is', 'EDITORIAL'], ['content', 'contains', '_SOURCE'], ["entity", "is", self._sg_shot]], ['content'])
+            if len(tasks) > 0:
                 self._sg_task = tasks[0]
+                status = {"sg_status_list": "psu"}
+                self.app.shotgun.update("Task", tasks[0]['id'], status)
         except ValueError:
             # continue without task
             setting = self.app.get_setting("default_task_filter", "[]")
@@ -344,9 +356,16 @@ class ShotgunTranscodeExporter(
 
             # use the head/tail to populate frame first/last/range fields on
             # the Version
-            head_in = self._sg_shot["sg_head_in"]
-            tail_out = self._sg_shot["sg_tail_out"]
+            if '_vref_' not in file_name:
+                FileIn = self._sg_shot["sg_head_in"]
+                FileOut = self._sg_shot["sg_tail_out"]
+            else:
+                FileIn = self._sg_shot["sg_cut_in"]
+                FileOut = self._sg_shot["sg_cut_out"]
 
+            file_type = self._preset.properties()["file_type"]
+
+            if file_type in ["mov", "ffmpeg"]:
             self._version_data = {
                 "user": sg_current_user,
                 "created_by": sg_current_user,
@@ -354,9 +373,23 @@ class ShotgunTranscodeExporter(
                 "project": self.app.context.project,
                 "sg_path_to_movie": self._resolved_export_path,
                 "code": file_name,
-                "sg_first_frame": head_in,
-                "sg_last_frame": tail_out,
-                "frame_range": "%s-%s" % (head_in, tail_out),
+                    "sg_first_frame": FileIn,
+                    "sg_last_frame": FileOut,
+                    "frame_range": "%s-%s" % (FileIn, FileOut),
+                    "sg_status_list": "psu",
+                }
+            else:
+                self._version_data = {
+                    "user": sg_current_user,
+                    "created_by": sg_current_user,
+                    "entity": self._sg_shot,
+                    "project": self.app.context.project,
+                    "sg_path_to_frames": self._resolved_export_path,
+                    "code": file_name,
+                    "sg_first_frame": FileIn,
+                    "sg_last_frame": FileOut,
+                    "frame_range": "%s-%s" % (FileIn, FileOut),
+                    "sg_status_list": "psu",
             }
 
             if self._sg_task is not None:
@@ -402,13 +435,25 @@ class ShotgunTranscodeExporter(
         # by using entity instead of export path to get context, this ensures
         # collated plates get linked to the hero shot
         ctx = self.app.tank.context_from_entity("Shot", self._sg_shot["id"])
+        if '_VREF_' in os.path.basename(self._resolved_export_path):
+            published_file_type = self.app.get_setting("vref_published_file_type")
+        elif '_PARAFX_' in os.path.basename(self._resolved_export_path):
+            published_file_type = self.app.get_setting("parafx_published_file_type")
+        else:
         published_file_type = self.app.get_setting("plate_published_file_type")
+
+        basename = os.path.splitext(os.path.basename(self._resolved_export_path))[0]
+        if 'mov' in os.path.splitext(os.path.basename(self._resolved_export_path))[1]:
+            finalName = '_'.join(basename.split('_')[:-1]) + '_mov'
+        else:
+            finalName = '_'.join(basename.split('_')[:-1])
+
 
         args = {
             "tk": self.app.tank,
             "context": ctx,
             "path": self._resolved_export_path,
-            "name": os.path.basename(self._resolved_export_path),
+            "name": finalName,
             "version_number": int(self._tk_version),
             "published_file_type": published_file_type,
         }
@@ -431,6 +476,32 @@ class ShotgunTranscodeExporter(
             self.app.shotgun.update(
                 pub_data["type"], pub_data["id"], self._extra_publish_data
             )
+        # DPS metadata inject
+        if '_VREF_' not in os.path.basename(self._resolved_export_path):
+            try:
+                meta = self._item.source().mediaSource().metadata()
+                width = int(meta['media.input.width'])
+                height = int(meta['media.input.height'])
+                data = {'sg_width': width, 'sg_height': height}
+                try:
+                    focal = float(meta['media.exr.camera_focal'])/1000
+                    reel = meta['media.exr.shoot_scene_reel_number']
+                    iso = int(meta['media.exr.camera_iso'])
+                    wb = int(meta['media.exr.camera_white_kelvin'])
+                    camera = meta['media.exr.camera_type']
+
+                    data['sg_focal_length'] = focal
+                    data['sg_reel_name'] = reel
+                    data['sg_iso'] = iso
+                    data['sg_wb'] = wb
+                    data['sg_camera_model'] = camera
+                except Exception as e:
+                    print (e)
+                    print("Unable to inject exr metadata to published_file")
+                self.app.shotgun.update(pub_data["type"], pub_data["id"], data)
+            except Exception as e:
+                print(e)
+                print("Unable to inject metadata to published_file")
 
         # upload thumbnail for publish
         if self._thumbnail:
@@ -461,8 +532,11 @@ class ShotgunTranscodeExporter(
                 self.app.shotgun.upload(
                     "Version", vers["id"], self._quicktime_path, "sg_uploaded_movie"
                 )
-                if self._temp_quicktime:
-                    shutil.rmtree(os.path.dirname(self._quicktime_path))
+                try:
+                    if self._temp_quicktime:
+                        shutil.rmtree(os.path.dirname(self._quicktime_path))
+                except Exception:
+                    pass
 
         # Post creation hook
         ####################
@@ -501,6 +575,15 @@ class ShotgunTranscodeExporter(
             # ingore any errors. ex: metrics logging not supported
             pass
 
+        # if os.path.exists(self._quicktime_path):
+        #     if self._temp_quicktime:
+        #         # time.sleep(1.0)
+        #         shutil.rmtree(os.path.dirname(self._quicktime_path))
+        #         #os.remove(self._quicktime_path)
+        # if vers:
+        #     if os.path.exists(self._quicktime_path):
+        #         # shutil.rmtree(os.path.dirname(self._quicktime_path))
+        #         os.remove(self._quicktime_path)
 
 class ShotgunTranscodePreset(
     ShotgunHieroObjectBase, FnTranscodeExporter.TranscodePreset, CollatedShotPreset

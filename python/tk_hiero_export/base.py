@@ -18,6 +18,7 @@ import hiero.core
 from hiero.exporters import FnShotExporter
 from hiero.exporters import FnShotProcessor
 from hiero.exporters import FnTranscodeExporter
+from hiero.exporters import FnCopyExporter
 from hiero.ui.FnUIProperty import UIPropertyFactory
 
 import tank

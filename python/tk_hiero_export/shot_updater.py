@@ -33,6 +33,21 @@ class ShotgunShotUpdater(
         CollatingExporter.__init__(self)
         self._cut_order = None
 
+    def _timecode(self, frame, fps, drop_frame=False):
+        """Convenience wrapper to convert a given frame and fps to a timecode.
+
+        :param frame: Frame number
+        :param fps: Frames per seconds (float)
+        :return: timecode string
+        """
+
+        if drop_frame:
+            display_type = hiero.core.Timecode.kDisplayDropFrameTimecode
+        else:
+            display_type = hiero.core.Timecode.kDisplayTimecode
+
+        return hiero.core.Timecode.timeToString(frame, fps, display_type)
+
     def get_cut_item_data(self):
         """
         Return some computed values for use when creating cut items.
@@ -108,6 +123,16 @@ class ShotgunShotUpdater(
             tail_out -= self.HEAD_ROOM_OFFSET
 
         # return the computed cut information
+        hiero_sequence = self._item.sequence()
+
+        # the sequence fps, used to calculate timecodes for cut items
+        fps = hiero_sequence.framerate().toFloat()
+
+        # get whether sequence timecode is displayed in drop frame format
+        drop_frame = hiero_sequence.dropFrame()
+        tc_cut_item_in = self._timecode((self._item.source().mediaSource().timecodeStart() + in_handle), fps, drop_frame)
+        tc_cut_item_out = self._timecode((self._item.source().mediaSource().timecodeStart() + in_handle + cut_duration), fps,
+                                         drop_frame)
         return {
             "cut_item_in": cut_in,
             "cut_item_out": cut_out,
@@ -118,6 +143,8 @@ class ShotgunShotUpdater(
             "head_in": head_in,
             "tail_out": tail_out,
             "working_duration": working_duration,
+            "timecode_cut_item_in_text": tc_cut_item_in,
+            "timecode_cut_item_out_text": tc_cut_item_out,
         }
 
     def taskStep(self):
@@ -277,7 +304,50 @@ class ShotgunShotUpdater(
                 )
 
         if template is not None:
-            sg_shot["task_template"] = template
+            sg_shot['task_template'] = template
+
+        # DPS SourceClip export
+        if self._preset.properties().get("custom_sourceClip_bool_property", True):
+            sg = self.app.shotgun
+            filters = [
+                ["project", "is", self.app.context.project],
+                ["code", "is", str(self._clip.name())],
+            ]
+            sourceClip = sg.find_one("SourceClip", filters, ["code"])
+            if not sourceClip:
+                sourceclip_data = {
+                    "code": str(self._clip.name()),
+                    "project": self.app.context.project,
+                }
+                sourceClip = sg.create("SourceClip", sourceclip_data)
+
+            sg_shot['sg_source_clip'] = sourceClip
+
+        #DPS metadata extract
+        try:
+            meta = self._item.source().mediaSource().metadata()
+            width = meta['media.input.width']
+            height = meta['media.input.height']
+            sg_shot['sg_width'] = int(width)
+            sg_shot['sg_height'] = int(height)
+            try:
+                focal = meta['media.exr.camera_focal']
+                reel = meta['media.exr.shoot_scene_reel_number']
+                iso = meta['media.exr.camera_iso']
+                wb = meta['media.exr.camera_white_kelvin']
+                camera = meta['media.exr.camera_type']
+                sg_shot['sg_focal_length_metadata'] = float(focal)/1000
+                sg_shot['sg_reel_name'] = reel
+                sg_shot['sg_iso'] = int(iso)
+                sg_shot['sg_wb'] = int(wb)
+                sg_shot['sg_camera_model'] = camera
+            except Exception as e:
+                print(e)
+                print("Unable to retrieve metadata")
+
+        except Exception as e:
+            print(e)
+            print("Unable to retrieve metadata")
 
         # commit the changes and update the thumbnail
         self.app.execute_hook_method(

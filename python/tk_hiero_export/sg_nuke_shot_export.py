@@ -188,11 +188,16 @@ class ShotgunNukeShotExporter(
         ctx = self.app.tank.context_from_path(self._resolved_export_path)
         published_file_type = self.app.get_setting("nuke_script_published_file_type")
 
+        basename = os.path.splitext(os.path.basename(self._resolved_export_path))[0]
+        if 'mov' in os.path.splitext(os.path.basename(self._resolved_export_path))[1]:
+            finalName = '_'.join(basename.split('_')[:-1]) + '_mov'
+        else:
+            finalName = '_'.join(basename.split('_')[:-1])
         args = {
             "tk": self.app.tank,
             "context": ctx,
             "path": self._resolved_export_path,
-            "name": os.path.basename(self._resolved_export_path),
+            "name": finalName,
             "version_number": int(self._tk_version_number),
             "published_file_type": published_file_type,
         }
@@ -206,6 +211,8 @@ class ShotgunNukeShotExporter(
                 tasks = self.app.shotgun.find("Task", task_filter)
                 if len(tasks) == 1:
                     args["task"] = tasks[0]
+                    status = {"sg_status_list": "rts"}
+                    self.app.shotgun.update("Task", tasks[0]['id'], status)
             except ValueError:
                 # continue without task
                 self.app.log_error("Invalid value for 'default_task_filter'")
