@@ -404,34 +404,19 @@ class ShotgunCopyExporter(ShotgunHieroObjectBase, FnCopyExporter.CopyExporter, C
                 FileIn = self._sg_shot["sg_cut_in"]
                 FileOut = self._sg_shot["sg_cut_out"]
 
-            file_type = self._preset.properties()["file_type"]
 
-            if file_type in ["mov", "ffmpeg"]:
-                self._version_data = {
-                    "user": sg_current_user,
-                    "created_by": sg_current_user,
-                    "entity": self._sg_shot,
-                    "project": self.app.context.project,
-                    "sg_path_to_movie": self._resolved_export_path,
-                    "code": file_name,
-                    "sg_first_frame": FileIn,
-                    "sg_last_frame": FileOut,
-                    "frame_range": "%s-%s" % (FileIn, FileOut),
-                    "sg_status_list": "psu",
-                }
-            else:
-                self._version_data = {
-                    "user": sg_current_user,
-                    "created_by": sg_current_user,
-                    "entity": self._sg_shot,
-                    "project": self.app.context.project,
-                    "sg_path_to_frames": self._resolved_export_path,
-                    "code": file_name,
-                    "sg_first_frame": FileIn,
-                    "sg_last_frame": FileOut,
-                    "frame_range": "%s-%s" % (FileIn, FileOut),
-                    "sg_status_list": "psu",
-                }
+            self._version_data = {
+                "user": sg_current_user,
+                "created_by": sg_current_user,
+                "entity": self._sg_shot,
+                "project": self.app.context.project,
+                "sg_path_to_movie": self._resolved_export_path,
+                "code": file_name,
+                "sg_first_frame": FileIn,
+                "sg_last_frame": FileOut,
+                "frame_range": "%s-%s" % (FileIn, FileOut),
+                "sg_status_list": "psu",
+            }
 
             if self._sg_task is not None:
                 self._version_data["sg_task"] = self._sg_task
