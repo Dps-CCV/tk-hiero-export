@@ -440,7 +440,7 @@ class ShotgunTranscodeExporter(
         elif '_PARAFX_' in os.path.basename(self._resolved_export_path):
             published_file_type = self.app.get_setting("parafx_published_file_type")
         else:
-        published_file_type = self.app.get_setting("plate_published_file_type")
+            published_file_type = self.app.get_setting("plate_published_file_type")
 
         basename = os.path.splitext(os.path.basename(self._resolved_export_path))[0]
         if 'mov' in os.path.splitext(os.path.basename(self._resolved_export_path))[1]:
