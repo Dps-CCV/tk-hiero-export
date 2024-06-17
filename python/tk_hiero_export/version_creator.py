@@ -532,11 +532,11 @@ class ShotgunTranscodeExporter(
                 self.app.shotgun.upload(
                     "Version", vers["id"], self._quicktime_path, "sg_uploaded_movie"
                 )
-                try:
-                    if self._temp_quicktime:
-                        shutil.rmtree(os.path.dirname(self._quicktime_path))
-                except Exception:
-                    pass
+                # try:
+                #     if self._temp_quicktime:
+                #         shutil.rmtree(os.path.dirname(self._quicktime_path))
+                # except Exception:
+                #     pass
 
         # Post creation hook
         ####################
@@ -580,10 +580,14 @@ class ShotgunTranscodeExporter(
         #         # time.sleep(1.0)
         #         shutil.rmtree(os.path.dirname(self._quicktime_path))
         #         #os.remove(self._quicktime_path)
-        # if vers:
-        #     if os.path.exists(self._quicktime_path):
-        #         # shutil.rmtree(os.path.dirname(self._quicktime_path))
-        #         os.remove(self._quicktime_path)
+        try:
+            if vers:
+                if os.path.exists(self._quicktime_path):
+                    # shutil.rmtree(os.path.dirname(self._quicktime_path))
+                    os.remove(self._quicktime_path)
+        except Exception as e:
+            print(str(e))
+            pass
 
 class ShotgunTranscodePreset(
     ShotgunHieroObjectBase, FnTranscodeExporter.TranscodePreset, CollatedShotPreset

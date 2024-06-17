@@ -144,11 +144,11 @@ class ShotgunCopyExporter(ShotgunHieroObjectBase, FnCopyExporter.CopyExporter, C
 
         randomName = ''.join(random.choices(string.ascii_lowercase, k=5))
         baseName = randomName + 'preview.mov'
-        self._quicktime_path = os.path.join(os.path.dirname(self.resolvedExportPath()), baseName)
-        # self._quicktime_path = os.path.join("C:\\TEMP_HIERO", baseName)
-        # if not os.path.exists("C:\\TEMP_HIERO\\"):
-        #    os.makedirs("C:\\TEMP_HIERO\\")
-        # self._quicktime_path = os.path.join(tempfile.mkdtemp(), baseName)
+        # self._quicktime_path = os.path.join(os.path.dirname(self.resolvedExportPath()), baseName)
+        self._quicktime_path = os.path.join("C:\\TEMP_HIERO", baseName)
+        if not os.path.exists("C:\\TEMP_HIERO\\"):
+            os.makedirs("C:\\TEMP_HIERO\\")
+
 
 
 
@@ -645,11 +645,14 @@ class ShotgunCopyExporter(ShotgunHieroObjectBase, FnCopyExporter.CopyExporter, C
         #     except:
         #         # ingore any errors. ex: metrics logging not supported
         #         pass
-
-            if vers:
-                if os.path.exists(self._quicktime_path):
-                    #shutil.rmtree(os.path.dirname(self._quicktime_path))
-                    os.remove(self._quicktime_path)
+            try:
+                if vers:
+                    if os.path.exists(self._quicktime_path):
+                        #shutil.rmtree(os.path.dirname(self._quicktime_path))
+                        os.remove(self._quicktime_path)
+            except Exception as e:
+                print(str(e))
+                pass
         hiero.core.log.info("CopyExporter:")
         hiero.core.log.info("  - source: " + str(src))
         hiero.core.log.info("  - destination: " + str(dst))
