@@ -370,18 +370,15 @@ class ShotgunCopyExporter(ShotgunHieroObjectBase, FnCopyExporter.CopyExporter, C
         # see if we get a task to use
         self._sg_task = None
         try:
-            if '_VREF_' in os.path.basename(self._resolved_export_path) or '_SOUNDS_' in os.path.basename(self._resolved_export_path):
+            if '_VREF_' in os.path.basename(self._resolved_export_path):
                 tasks = self.app.shotgun.find("Task",
-                                              [['step.Step.code', 'is', 'VREF'], ['content', 'contains', '_VREF'],
+                                              [['step.Step.code', 'is', 'VREF'],
                                                ["entity", "is", self._sg_shot]], ['content'])
             else:
                 tasks = self.app.shotgun.find("Task", [['step.Step.code', 'is', 'EDITORIAL'],
-                                                       ['content', 'contains', '_SOURCE'],
                                                        ["entity", "is", self._sg_shot]], ['content'])
             if len(tasks) > 0:
                 self._sg_task = tasks[0]
-                status = {"sg_status_list": "psu"}
-                self.app.shotgun.update("Task", tasks[0]['id'], status)
         except ValueError:
             # continue without task
             setting = self.app.get_setting("default_task_filter", "[]")
@@ -410,7 +407,7 @@ class ShotgunCopyExporter(ShotgunHieroObjectBase, FnCopyExporter.CopyExporter, C
                 "created_by": sg_current_user,
                 "entity": self._sg_shot,
                 "project": self.app.context.project,
-                "sg_path_to_movie": self._resolved_export_path,
+                "sg_path_to_frames": self._resolved_export_path,
                 "code": file_name,
                 "sg_first_frame": FileIn,
                 "sg_last_frame": FileOut,
@@ -449,49 +446,6 @@ class ShotgunCopyExporter(ShotgunHieroObjectBase, FnCopyExporter.CopyExporter, C
         except Exception:
             pass
 
-        # First way of rendering .mov to upload to DPS shotgun, based on ffmpeg
-        # ###Try to render temp quicktime
-        # start = self._clip.sourceIn()
-        # end = self._clip.sourceOut()
-        # # If exporting just the cut
-        # if self._cutHandles is not None:
-        #     handles = self._cutHandles
-        #
-        #     if self._retime:
-        #         # Compensate for retime
-        #         handles *= abs(self._item.playbackSpeed())
-        #
-        #     # Ensure _start <= _end (for negative retimes, sourceIn > sourceOut)
-        #     sourceInOut = (self._item.sourceIn(), self._item.sourceOut())
-        #     start = min(sourceInOut)
-        #     end = max(sourceInOut)
-        #
-        #     # This accounts for clips which do not start at frame 0 (e.g. dpx sequence starting at frame number 30)
-        #     # We offset the TrackItem's in/out by clip's start frame.
-        #     start += self._clip.sourceIn()
-        #     end += self._clip.sourceIn()
-        #
-        #     # Add Handles
-        #     start = max(start - handles, self._clip.sourceIn())
-        #     end = min(end + handles, self._clip.sourceOut())
-        # import math
-        # # Make sure values are integers
-        # start = int(math.floor(start))
-        # end = int(math.ceil(end))
-        #
-        # sourcepath = self._source.fileinfos()[0].filename()
-        # destpath = self._quicktime_path
-        # framestart = start
-        # frameend = end
-        # framerange = (end-start)+1
-        # print(sourcepath)
-        # print(destpath)
-        # print(framestart)
-        # print(frameend)
-        # qtString = """ffmpeg.exe -start_number {} -y -i {} -frames:v {} -vf "lut3d='C\:/Users/USER/Desktop/test/ffmpeg/sRGB-ACES2065-1.csp', scale= 1920:-1, colorspace=all=bt709:iall=bt709:trc=srgb:fast=1" -c:v prores_ks -profile:v 3 -vendor apl0 -pix_fmt yuv422p10le -r 24 {}""".format(framestart, sourcepath, framerange, destpath)
-        # # qtString = f"""ffmpeg.exe -start_number {framestart} -y -i {sourcepath} -vf "lut3d='C\:/Users/USER/Desktop/test/ffmpeg/sRGB-ACES2065-1.csp', scale= 1920:-1, colorspace=all=bt709:iall=bt709:trc=srgb:fast=1" -c:v prores_ks -profile:v 3 -vendor apl0 -pix_fmt yuv422p10le -r 24 {destpath}"""
-        # print (qtString)
-        # os.popen(qtString)
 
 
 
@@ -535,13 +489,42 @@ class ShotgunCopyExporter(ShotgunHieroObjectBase, FnCopyExporter.CopyExporter, C
             if self._sg_task is not None:
                 args["task"] = self._sg_task
 
-            print(args)
 
             published_file_entity_type = sgtk.util.get_published_file_entity_type(self.app.sgtk)
+
+            ## DPS metadata inject
+            if self._preset.properties().get("custom_metadata_bool_property", True):
+                if '_VREF_' not in os.path.basename(self._resolved_export_path):
+                    try:
+                        meta = self._item.source().mediaSource().metadata()
+                        width = int(meta['media.input.width'])
+                        height = int(meta['media.input.height'])
+                        args['sg_width'] = width
+                        args['sg_height'] = height
+                        try:
+                            focal = float(meta['media.exr.camera_focal'])/1000
+                            reel = meta['media.exr.shoot_scene_reel_number']
+                            iso = int(meta['media.exr.camera_iso'])
+                            wb = int(meta['media.exr.camera_white_kelvin'])
+                            camera = meta['media.exr.camera_type']
+
+                            args['sg_focal_length'] = focal
+                            args['sg_reel_name'] = reel
+                            args['sg_iso'] = iso
+                            args['sg_wb'] = wb
+                            args['sg_camera_model'] = camera
+                        except Exception as e:
+                            print (e)
+                            print("Unable to inject exr metadata to published_file")
+                    except Exception as e:
+                        print(e)
+                        print("Unable to inject metadata to published_file")
 
             # register publish
             self.app.log_debug("Register publish in shotgun: %s" % str(args))
             pub_data = tank.util.register_publish(**args)
+            status = {"sg_status_list": "psu"}
+            self.app.shotgun.update("Task", self._sg_task['id'], status)
 
 
             if self._extra_publish_data is not None:
@@ -549,32 +532,6 @@ class ShotgunCopyExporter(ShotgunHieroObjectBase, FnCopyExporter.CopyExporter, C
                     "Updating Shotgun %s %s" % (published_file_entity_type, str(self._extra_publish_data)))
                 self.app.shotgun.update(pub_data["type"], pub_data["id"], self._extra_publish_data)
 
-            ## DPS metadata inject
-            if '_VREF_' not in os.path.basename(self._resolved_export_path):
-                try:
-                    meta = self._item.source().mediaSource().metadata()
-                    width = int(meta['media.input.width'])
-                    height = int(meta['media.input.height'])
-                    data = {'sg_width': width, 'sg_height': height}
-                    try:
-                        focal = float(meta['media.exr.camera_focal'])/1000
-                        reel = meta['media.exr.shoot_scene_reel_number']
-                        iso = int(meta['media.exr.camera_iso'])
-                        wb = int(meta['media.exr.camera_white_kelvin'])
-                        camera = meta['media.exr.camera_type']
-
-                        data['sg_focal_length'] = focal
-                        data['sg_reel_name'] = reel
-                        data['sg_iso'] = iso
-                        data['sg_wb'] = wb
-                        data['sg_camera_model'] = camera
-                    except Exception as e:
-                        print (e)
-                        print("Unable to inject exr metadata to published_file")
-                    self.app.shotgun.update(pub_data["type"], pub_data["id"], data)
-                except Exception as e:
-                    print(e)
-                    print("Unable to inject metadata to published_file")
 
             # upload thumbnail for publish
             if self._thumbnail:
@@ -602,10 +559,7 @@ class ShotgunCopyExporter(ShotgunHieroObjectBase, FnCopyExporter.CopyExporter, C
                 if os.path.exists(self._quicktime_path):
                     self.app.log_debug("Uploading quicktime to Shotgun... (%s)" % self._quicktime_path)
                     self.app.shotgun.upload("Version", vers["id"], self._quicktime_path, "sg_uploaded_movie")
-                    #try:
-                    #    shutil.rmtree(os.path.dirname(self._quicktime_path))
-                    #except Exception:
-                    #    pass
+
 
             # Post creation hook
             ####################
@@ -638,13 +592,6 @@ class ShotgunCopyExporter(ShotgunHieroObjectBase, FnCopyExporter.CopyExporter, C
                             {"type": "CutItem", "id": cut_item_id},
                             self._thumbnail
                         )
-        #
-        #     # Log usage metrics
-        #     try:
-        #         self.app.log_metric("Transcode & Publish", log_version=True)
-        #     except:
-        #         # ingore any errors. ex: metrics logging not supported
-        #         pass
             try:
                 if vers:
                     if os.path.exists(self._quicktime_path):

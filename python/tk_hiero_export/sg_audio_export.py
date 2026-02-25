@@ -62,7 +62,7 @@ class ShotgunAudioExporterUI(ShotgunHieroObjectBase, FnAudioExportUI.AudioExport
 
 
 class ShotgunAudioExporter(
-    ShotgunHieroObjectBase, FnAudioExportTask.AudioExportTask, CollatingExporter
+    ShotgunHieroObjectBase, CollatingExporter, FnAudioExportTask.AudioExportTask
 ):
     """
     Create Audio object and send to Shotgun
@@ -130,18 +130,9 @@ class ShotgunAudioExporter(
         # see if we get a task to use
         self._sg_task = None
         try:
-            if '_VREF_' in os.path.basename(self._resolved_export_path) or '_SOUNDS_' in os.path.basename(self._resolved_export_path):
-                tasks = self.app.shotgun.find("Task",
-                                              [['step.Step.code', 'is', 'VREF'], ['content', 'contains', '_VREF'],
-                                               ["entity", "is", self._sg_shot]], ['content'])
-            else:
-                tasks = self.app.shotgun.find("Task", [['step.Step.code', 'is', 'EDITORIAL'],
-                                                       ['content', 'contains', '_SOURCE'],
-                                                       ["entity", "is", self._sg_shot]], ['content'])
+            tasks = self.app.shotgun.find("Task", [['step.Step.code', 'is', 'VREF'], ["entity", "is", self._sg_shot]], ['content'])
             if len(tasks) > 0:
                 self._sg_task = tasks[0]
-                status = {"sg_status_list": "psu"}
-                self.app.shotgun.update("Task", tasks[0]['id'], status)
         except ValueError:
             # continue without task
             setting = self.app.get_setting("default_task_filter", "[]")
@@ -150,7 +141,12 @@ class ShotgunAudioExporter(
         # figure out the thumbnail frame
         ##########################
         source = self._item.source()
-        self._thumbnail = source.thumbnail(source.posterFrame())
+        try:
+            self._thumbnail = source.thumbnail(source.posterFrame())
+        except RuntimeError:
+            # Nuke 16.0 issues a RuntimeError when trying to get the thumbnail
+            # RuntimeError: Layer does not exist
+            self.app.logger.error("Unable to extract thumbnail", exc_info=True)
 
         return FnAudioExportTask.AudioExportTask.startTask(self)
 
@@ -307,10 +303,12 @@ class ShotgunAudioExporter(
 
         # upload thumbnail for publish
         self._upload_thumbnail_to_sg(pub_data, self._thumbnail)
+        status = {"sg_status_list": "psu"}
+        self.app.shotgun.update("Task", self._sg_task['id'], status)
 
 
 class ShotgunAudioPreset(
-    ShotgunHieroObjectBase, FnAudioExportTask.AudioExportPreset, CollatedShotPreset
+    ShotgunHieroObjectBase, CollatedShotPreset, FnAudioExportTask.AudioExportPreset
 ):
     """
     Settings for the shotgun audio export step

@@ -121,7 +121,7 @@ class ShotgunTranscodeExporterUI(
 
 
 class ShotgunTranscodeExporter(
-    ShotgunHieroObjectBase, FnTranscodeExporter.TranscodeExporter, CollatingExporter
+    ShotgunHieroObjectBase, CollatingExporter, FnTranscodeExporter.TranscodeExporter
 ):
     """
     Create Transcode object and send to Shotgun
@@ -224,7 +224,7 @@ class ShotgunTranscodeExporter(
         # their Python classes out from under us, so now we're going
         # to have to handle this the ugly way, via introspecting the
         # arguments expected by the createWriteNode method.
-        arg_spec = inspect.getargspec(FnExternalRender.createWriteNode)
+        arg_spec = inspect.getfullargspec(FnExternalRender.createWriteNode)
         if "projectsettings" in arg_spec.args:
             kwargs = dict(
                 path=self._quicktime_path,
@@ -339,8 +339,6 @@ class ShotgunTranscodeExporter(
                 tasks = self.app.shotgun.find("Task", [['step.Step.code', 'is', 'EDITORIAL'], ['content', 'contains', '_SOURCE'], ["entity", "is", self._sg_shot]], ['content'])
             if len(tasks) > 0:
                 self._sg_task = tasks[0]
-                status = {"sg_status_list": "psu"}
-                self.app.shotgun.update("Task", tasks[0]['id'], status)
         except ValueError:
             # continue without task
             setting = self.app.get_setting("default_task_filter", "[]")
@@ -373,10 +371,10 @@ class ShotgunTranscodeExporter(
                     "project": self.app.context.project,
                     "sg_path_to_movie": self._resolved_export_path,
                     "code": file_name,
-                        "sg_first_frame": FileIn,
-                        "sg_last_frame": FileOut,
-                        "frame_range": "%s-%s" % (FileIn, FileOut),
-                        "sg_status_list": "psu",
+                    "sg_first_frame": FileIn,
+                    "sg_last_frame": FileOut,
+                    "frame_range": "%s-%s" % (FileIn, FileOut),
+                    "sg_status_list": "psu",
                     }
             else:
                 self._version_data = {
@@ -465,6 +463,34 @@ class ShotgunTranscodeExporter(
             self.app.sgtk
         )
 
+        # DPS metadata inject
+        if self._preset.properties().get("custom_metadata_bool_property", True):
+            if '_VREF_' not in os.path.basename(self._resolved_export_path):
+                try:
+                    meta = self._item.source().mediaSource().metadata()
+                    width = int(meta['media.input.width'])
+                    height = int(meta['media.input.height'])
+                    args['sg_width'] = width
+                    args['sg_height'] = height
+                    try:
+                        focal = float(meta['media.exr.camera_focal'])/1000
+                        reel = meta['media.exr.shoot_scene_reel_number']
+                        iso = int(meta['media.exr.camera_iso'])
+                        wb = int(meta['media.exr.camera_white_kelvin'])
+                        camera = meta['media.exr.camera_type']
+
+                        args['sg_focal_length'] = focal
+                        args['sg_reel_name'] = reel
+                        args['sg_iso'] = iso
+                        args['sg_wb'] = wb
+                        args['sg_camera_model'] = camera
+                    except Exception as e:
+                        print (e)
+                        print("Unable to inject exr metadata to published_file")
+                except Exception as e:
+                    print(e)
+                    print("Unable to inject metadata to published_file")
+
         # register publish
         self.app.log_debug("Register publish in shotgun: %s" % str(args))
         pub_data = tank.util.register_publish(**args)
@@ -476,32 +502,8 @@ class ShotgunTranscodeExporter(
             self.app.shotgun.update(
                 pub_data["type"], pub_data["id"], self._extra_publish_data
             )
-        # DPS metadata inject
-        if '_VREF_' not in os.path.basename(self._resolved_export_path):
-            try:
-                meta = self._item.source().mediaSource().metadata()
-                width = int(meta['media.input.width'])
-                height = int(meta['media.input.height'])
-                data = {'sg_width': width, 'sg_height': height}
-                try:
-                    focal = float(meta['media.exr.camera_focal'])/1000
-                    reel = meta['media.exr.shoot_scene_reel_number']
-                    iso = int(meta['media.exr.camera_iso'])
-                    wb = int(meta['media.exr.camera_white_kelvin'])
-                    camera = meta['media.exr.camera_type']
-
-                    data['sg_focal_length'] = focal
-                    data['sg_reel_name'] = reel
-                    data['sg_iso'] = iso
-                    data['sg_wb'] = wb
-                    data['sg_camera_model'] = camera
-                except Exception as e:
-                    print (e)
-                    print("Unable to inject exr metadata to published_file")
-                self.app.shotgun.update(pub_data["type"], pub_data["id"], data)
-            except Exception as e:
-                print(e)
-                print("Unable to inject metadata to published_file")
+        status = {"sg_status_list": "psu"}
+        self.app.shotgun.update("Task", self._sg_task['id'], status)
 
         # upload thumbnail for publish
         if self._thumbnail:
@@ -590,7 +592,7 @@ class ShotgunTranscodeExporter(
             pass
 
 class ShotgunTranscodePreset(
-    ShotgunHieroObjectBase, FnTranscodeExporter.TranscodePreset, CollatedShotPreset
+    ShotgunHieroObjectBase, CollatedShotPreset, FnTranscodeExporter.TranscodePreset
 ):
     """Settings for the PTR transcode step"""
 

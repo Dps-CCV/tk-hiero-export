@@ -158,7 +158,12 @@ class ShotgunNukeShotExporter(
             )
 
         source = self._item.source()
-        self._thumbnail = source.thumbnail(source.posterFrame())
+        try:
+            self._thumbnail = source.thumbnail(source.posterFrame())
+        except RuntimeError:
+            # Nuke 16.0 issues a RuntimeError when trying to get the thumbnail
+            # RuntimeError: Layer does not exist
+            self.app.logger.error("Unable to extract thumbnail", exc_info=True)
 
         return FnNukeShotExporter.NukeShotExporter.taskStep(self)
 
@@ -189,10 +194,7 @@ class ShotgunNukeShotExporter(
         published_file_type = self.app.get_setting("nuke_script_published_file_type")
 
         basename = os.path.splitext(os.path.basename(self._resolved_export_path))[0]
-        if 'mov' in os.path.splitext(os.path.basename(self._resolved_export_path))[1]:
-            finalName = '_'.join(basename.split('_')[:-1]) + '_mov'
-        else:
-            finalName = '_'.join(basename.split('_')[:-1])
+        finalName = '_'.join(basename.split('_')[:-1])
         args = {
             "tk": self.app.tank,
             "context": ctx,
@@ -211,8 +213,6 @@ class ShotgunNukeShotExporter(
                 tasks = self.app.shotgun.find("Task", task_filter)
                 if len(tasks) == 1:
                     args["task"] = tasks[0]
-                    status = {"sg_status_list": "rts"}
-                    self.app.shotgun.update("Task", tasks[0]['id'], status)
             except ValueError:
                 # continue without task
                 self.app.log_error("Invalid value for 'default_task_filter'")
@@ -248,6 +248,9 @@ class ShotgunNukeShotExporter(
 
         # upload thumbnail for sequence
         self._upload_thumbnail_to_sg(sg_publish, self._thumbnail)
+
+        # status = {"sg_status_list": "rts"}
+        # self.app.shotgun.update("Task", args["task"]['id'], status)
 
         # Log usage metrics
         try:
@@ -325,7 +328,7 @@ class ShotgunNukeShotExporter(
 
 
 class ShotgunNukeShotPreset(
-    ShotgunHieroObjectBase, FnNukeShotExporter.NukeShotPreset, CollatedShotPreset
+    ShotgunHieroObjectBase, CollatedShotPreset, FnNukeShotExporter.NukeShotPreset
 ):
     """
     Settings for the shotgun transcode step

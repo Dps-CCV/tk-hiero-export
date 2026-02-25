@@ -22,7 +22,7 @@ from . import (
 
 
 class ShotgunShotUpdater(
-    ShotgunHieroObjectBase, FnShotExporter.ShotTask, CollatingExporter
+    ShotgunHieroObjectBase, CollatingExporter, FnShotExporter.ShotTask
 ):
     """
     Ensures that Shots and Sequences exist in Shotgun
@@ -146,6 +146,10 @@ class ShotgunShotUpdater(
             "timecode_cut_item_in_text": tc_cut_item_in,
             "timecode_cut_item_out_text": tc_cut_item_out,
         }
+
+    def finishTask(self):
+        FnShotExporter.ShotTask.finishTask(self)
+        CollatingExporter.finishTask(self)
 
     def taskStep(self):
         """
@@ -324,30 +328,31 @@ class ShotgunShotUpdater(
             sg_shot['sg_source_clip'] = sourceClip
 
         #DPS metadata extract
-        try:
-            meta = self._item.source().mediaSource().metadata()
-            width = meta['media.input.width']
-            height = meta['media.input.height']
-            sg_shot['sg_width'] = int(width)
-            sg_shot['sg_height'] = int(height)
+        if self._preset.properties().get("custom_metadata_bool_property", True):
             try:
-                focal = meta['media.exr.camera_focal']
-                reel = meta['media.exr.shoot_scene_reel_number']
-                iso = meta['media.exr.camera_iso']
-                wb = meta['media.exr.camera_white_kelvin']
-                camera = meta['media.exr.camera_type']
-                sg_shot['sg_focal_length_metadata'] = float(focal)/1000
-                sg_shot['sg_reel_name'] = reel
-                sg_shot['sg_iso'] = int(iso)
-                sg_shot['sg_wb'] = int(wb)
-                sg_shot['sg_camera_model'] = camera
+                meta = self._item.source().mediaSource().metadata()
+                width = meta['media.input.width']
+                height = meta['media.input.height']
+                sg_shot['sg_width'] = int(width)
+                sg_shot['sg_height'] = int(height)
+                try:
+                    focal = meta['media.exr.camera_focal']
+                    reel = meta['media.exr.shoot_scene_reel_number']
+                    iso = meta['media.exr.camera_iso']
+                    wb = meta['media.exr.camera_white_kelvin']
+                    camera = meta['media.exr.camera_type']
+                    sg_shot['sg_focal_length_metadata'] = float(focal)/1000
+                    sg_shot['sg_reel_name'] = reel
+                    sg_shot['sg_iso'] = int(iso)
+                    sg_shot['sg_wb'] = int(wb)
+                    sg_shot['sg_camera_model'] = camera
+                except Exception as e:
+                    print(e)
+                    print("Unable to retrieve metadata")
+
             except Exception as e:
                 print(e)
                 print("Unable to retrieve metadata")
-
-        except Exception as e:
-            print(e)
-            print("Unable to retrieve metadata")
 
         # commit the changes and update the thumbnail
         self.app.execute_hook_method(

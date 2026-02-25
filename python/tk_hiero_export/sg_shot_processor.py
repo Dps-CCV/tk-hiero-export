@@ -203,7 +203,7 @@ class ShotgunShotProcessorUI(
             properties["sg_cut_type"] = new_value
 
         # connect the widget index changed to the callback
-        cut_type_widget.currentIndexChanged[str].connect(value_changed)
+        cut_type_widget.currentTextChanged.connect(value_changed)
 
         # ---- construct the layout with a label
 
@@ -255,7 +255,7 @@ class ShotgunShotProcessorUI(
         tagTable.setMinimumHeight(150)
         tagTable.setHorizontalHeaderLabels(["Hiero Tags"] + labels)
         tagTable.setAlternatingRowColors(True)
-        tagTable.setSelectionMode(tagTable.NoSelection)
+        tagTable.setSelectionMode(QtGui.QAbstractItemView.SelectionMode.NoSelection)
         tagTable.setShowGrid(False)
         tagTable.verticalHeader().hide()
         tagTable.horizontalHeader().setStretchLastSection(True)
@@ -263,8 +263,8 @@ class ShotgunShotProcessorUI(
 
         # on change rebuild the properties
         def changed(index):
-            for (row, name) in enumerate(names):
-                for (col, key) in enumerate(keys):
+            for row, name in enumerate(names):
+                for col, key in enumerate(keys):
                     combo = tagTable.cellWidget(row, col + 1)
 
                     # if no tag mapped to a name
@@ -280,7 +280,7 @@ class ShotgunShotProcessorUI(
 
         # and build the table
         tagsByName = self._get_all_tags_by_name()
-        for (row, name) in enumerate(names):
+        for row, name in enumerate(names):
             tag = tagsByName.get(name, None)
             if tag is None:
                 continue
@@ -291,10 +291,10 @@ class ShotgunShotProcessorUI(
             tagTable.setItem(row, 0, item)
 
             # build combo boxes for each set of values
-            for (col, vals) in enumerate(values):
+            for col, vals in enumerate(values):
                 combo = QtGui.QComboBox()
                 combo.addItem(None)
-                for (i, value) in enumerate(vals):
+                for i, value in enumerate(vals):
                     combo.addItem(value)
                     # see if the current item is the one in the properties
                     if map[name][col] == value:
@@ -303,7 +303,9 @@ class ShotgunShotProcessorUI(
                 # adjust sizes to avoid clipping or scrolling
                 width = combo.minimumSizeHint().width()
                 combo.setMinimumWidth(width)
-                combo.setSizeAdjustPolicy(combo.AdjustToContents)
+                combo.setSizeAdjustPolicy(
+                    QtGui.QComboBox.SizeAdjustPolicy.AdjustToContents
+                )
                 tagTable.setCellWidget(row, col + 1, combo)
 
         tagTable.resizeRowsToContents()
@@ -372,7 +374,7 @@ class ShotgunShotProcessor(ShotgunHieroObjectBase, FnShotProcessor.ShotProcessor
 
         # inject collate settings into Tasks where needed
         (collateTracks, collateShotNames) = self._getCollateProperties()
-        for (itemPath, itemPreset) in exportTemplate:
+        for itemPath, itemPreset in exportTemplate:
             if "collateTracks" in itemPreset.properties():
                 itemPreset.properties()["collateTracks"] = collateTracks
             if "collateShotNames" in itemPreset.properties():
@@ -730,14 +732,14 @@ class ShotgunShotProcessor(ShotgunHieroObjectBase, FnShotProcessor.ShotProcessor
         cut_item_data_list = []
 
         #DPS get sequence timecodes for cut export
-        sequence = hiero.ui.activeSequence()
+        sequence = hiero_sequence
         timecodeStart = self._timecode(sequence.timecodeStart(), fps, drop_frame)
         seqduration = sequence.duration()
         en = sequence.timecodeStart() + seqduration
         timecodeEnd = self._timecode(en, fps, drop_frame)
 
         # process the tasks in order
-        for (shot_updater_task, transcode_task) in cut_related_tasks:
+        for shot_updater_task, transcode_task in cut_related_tasks:
 
             # cut order was populated by the calling method to update the
             # Shot entity's cut info
@@ -826,9 +828,10 @@ class ShotgunShotProcessor(ShotgunHieroObjectBase, FnShotProcessor.ShotProcessor
         # create the cut to get the id.
         sg = self.app.shotgun
         cut = sg.create("Cut", cut_data)
-        self._app.log_debug("Created Cut in ShotGrid: %s" % (cut,))
-        self._app.log_info("Created Cut '%s' in ShotGrid!" % (cut["code"],))
-
+        self._app.log_debug("Created Cut in Flow Production Tracking: %s" % (cut,))
+        self._app.log_info(
+            "Created Cut '%s' in Flow Production Tracking!" % (cut["code"],)
+        )
 
 
         try:
@@ -928,7 +931,7 @@ class ShotgunShotProcessor(ShotgunHieroObjectBase, FnShotProcessor.ShotProcessor
 
 
 class ShotgunShotProcessorPreset(
-    ShotgunHieroObjectBase, FnShotProcessor.ShotProcessorPreset, CollatedShotPreset
+    ShotgunHieroObjectBase, CollatedShotPreset, FnShotProcessor.ShotProcessorPreset
 ):
     """
     Handles presets for the shot processor.
