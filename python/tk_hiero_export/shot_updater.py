@@ -311,48 +311,57 @@ class ShotgunShotUpdater(
             sg_shot['task_template'] = template
 
         # DPS SourceClip export
-        if self._preset.properties().get("custom_sourceClip_bool_property", True):
-            sg = self.app.shotgun
-            filters = [
-                ["project", "is", self.app.context.project],
-                ["code", "is", str(self._clip.name())],
-            ]
-            sourceClip = sg.find_one("SourceClip", filters, ["code"])
-            if not sourceClip:
-                sourceclip_data = {
-                    "code": str(self._clip.name()),
-                    "project": self.app.context.project,
-                }
-                sourceClip = sg.create("SourceClip", sourceclip_data)
-
-            sg_shot['sg_source_clip'] = sourceClip
-
-        #DPS metadata extract
-        if self._preset.properties().get("custom_metadata_bool_property", True):
-            try:
+        self._resolved_export_path = self.resolvedExportPath()
+        # convert slashes to native os style..
+        self._resolved_export_path = self._resolved_export_path.replace(
+            "/", os.path.sep
+        )
+        if 'PARAFX' in self._resolved_export_path:
+            if self._preset.properties().get("custom_sourceClip_bool_property", True):
+                sourceclip_field = self._preset.properties().get("custom_sourceclip_text_property", "")
                 meta = self._item.source().mediaSource().metadata()
-                width = meta['media.input.width']
-                height = meta['media.input.height']
-                sg_shot['sg_width'] = int(width)
-                sg_shot['sg_height'] = int(height)
+                sourceclip_name = meta[sourceclip_field]
+                sg = self.app.shotgun
+                filters = [
+                    ["project", "is", self.app.context.project],
+                    ["code", "is", str(sourceclip_name)],
+                ]
+                sourceClip = sg.find_one("SourceClip", filters, ["code"])
+                if not sourceClip:
+                    sourceclip_data = {
+                        "code": str(sourceclip_name),
+                        "project": self.app.context.project,
+                    }
+                    sourceClip = sg.create("SourceClip", sourceclip_data)
+
+                sg_shot['sg_source_clip'] = sourceClip
+
+            #DPS metadata extract
+            if self._preset.properties().get("custom_metadata_bool_property", True):
                 try:
-                    focal = meta['media.exr.camera_focal']
-                    reel = meta['media.exr.shoot_scene_reel_number']
-                    iso = meta['media.exr.camera_iso']
-                    wb = meta['media.exr.camera_white_kelvin']
-                    camera = meta['media.exr.camera_type']
-                    sg_shot['sg_focal_length_metadata'] = float(focal)/1000
-                    sg_shot['sg_reel_name'] = reel
-                    sg_shot['sg_iso'] = int(iso)
-                    sg_shot['sg_wb'] = int(wb)
-                    sg_shot['sg_camera_model'] = camera
+                    meta = self._item.source().mediaSource().metadata()
+                    width = meta['media.input.width']
+                    height = meta['media.input.height']
+                    sg_shot['sg_width'] = int(width)
+                    sg_shot['sg_height'] = int(height)
+                    try:
+                        focal = meta['media.exr.camera_focal']
+                        reel = meta['media.exr.shoot_scene_reel_number']
+                        iso = meta['media.exr.camera_iso']
+                        wb = meta['media.exr.camera_white_kelvin']
+                        camera = meta['media.exr.camera_type']
+                        sg_shot['sg_focal_length_metadata'] = float(focal)/1000
+                        sg_shot['sg_reel_name'] = reel
+                        sg_shot['sg_iso'] = int(iso)
+                        sg_shot['sg_wb'] = int(wb)
+                        sg_shot['sg_camera_model'] = camera
+                    except Exception as e:
+                        print(e)
+                        print("Unable to retrieve metadata")
+
                 except Exception as e:
                     print(e)
                     print("Unable to retrieve metadata")
-
-            except Exception as e:
-                print(e)
-                print("Unable to retrieve metadata")
 
         # commit the changes and update the thumbnail
         self.app.execute_hook_method(
