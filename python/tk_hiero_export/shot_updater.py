@@ -318,7 +318,7 @@ class ShotgunShotUpdater(
         )
         if 'PARAFX' in self._resolved_export_path:
             if self._preset.properties().get("custom_sourceClip_bool_property", True):
-                sourceclip_field = self._preset.properties().get("custom_sourceclip_text_property", "")
+                sourceclip_field = "media." + self._preset.properties().get("custom_sourceClip_text_property", "")
                 meta = self._item.source().mediaSource().metadata()
                 sourceclip_name = meta[sourceclip_field]
                 sg = self.app.shotgun
