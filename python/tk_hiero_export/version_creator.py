@@ -16,6 +16,7 @@ import tempfile
 import inspect
 import random
 import string
+import re
 
 from hiero.exporters import FnExternalRender
 from hiero.exporters import FnTranscodeExporter

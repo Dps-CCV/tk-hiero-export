@@ -14,7 +14,7 @@ import sys
 import shutil
 import tempfile
 # import inspect
-# import re
+import re
 import random
 import string
 
