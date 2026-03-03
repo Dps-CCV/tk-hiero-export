@@ -142,6 +142,77 @@ class ShotgunTranscodeExporter(
         self._quicktime_path = None
         self._temp_quicktime = None
 
+    ###EFECTOSCOPIO funciones para configuración de campos de metadata y expresiones
+
+    EXPR_PATTERN = re.compile(r"\{([^}]+)\}(?:\[(.*?)\])?")
+
+    def resolve_variable(meta, varname: str) -> str:
+        # Replace this with your metadata logic
+        return meta['media.' + varname]
+        # if varname == "exr.width":
+        #     return "A001C001_01"
+        # if varname == "exr.h":
+        #     return "AA"
+        return f"<unknown:{varname}>"
+
+    def parse_slice(token: str, value: str) -> str:
+        if ":" in token:
+            a, b = token.split(":", 1)
+            start = int(a) if a.strip() else None
+            end = int(b) if b.strip() else None
+            return value[slice(start, end)]
+        return value[int(token):] if token.startswith("-") else value[:int(token)]
+
+    def apply_transform(value: str, token: str) -> str:
+        t = token.strip()
+
+        if t in ("", "trim", "strip"):
+            return value.strip()
+        if t == "ltrim": return value.lstrip()
+        if t == "rtrim": return value.rstrip()
+        if t == "lower": return value.lower()
+        if t == "upper": return value.upper()
+        if t == "title": return value.title()
+        if t == "capitalize": return value.capitalize()
+
+        if t.startswith("replace:"):
+            _, old, new = t.split(":", 2)
+            return value.replace(old, new)
+
+        if t.startswith("remove:"):
+            _, sub = t.split(":", 1)
+            return value.replace(sub, "")
+
+        if t.startswith("split:"):
+            _, sep, idx = t.split(":", 2)
+            parts = value.split(sep)
+            return parts[int(idx)] if 0 <= int(idx) < len(parts) else ""
+
+        if t.startswith("join:"):
+            _, sep = t.split(":", 1)
+            return sep.join(value)
+
+        if ":" in t or t.lstrip("-").isdigit():
+            return parse_slice(t, value)
+
+        return value
+
+    def evaluate_expression(meta, text: str) -> str:
+        def repl(match):
+            varname = match.group(1)
+            pipeline = match.group(2)
+
+            value = resolve_variable(meta, varname)
+
+            if pipeline:
+                for tok in pipeline.split("|"):
+                    value = apply_transform(value, tok)
+
+            return value
+
+        # re.sub replaces ALL matches, leaving the rest unchanged
+        return EXPR_PATTERN.sub(repl, text)
+
     def addWriteNodeToScript(self, script, rootNode, framerate):
         """
         Override the default addWriteNodeToScript functionality so that we can add a SetNode before
@@ -393,6 +464,97 @@ class ShotgunTranscodeExporter(
             if self._sg_task is not None:
                 self._version_data["sg_task"] = self._sg_task
 
+            # DPS metadata inject
+            if self._preset.properties().get("custom_metadata_bool_property", True):
+                if '_VREF_' not in os.path.basename(self._resolved_export_path):
+                    try:
+                        meta = self._item.source().mediaSource().metadata()
+                        if self._preset.properties().get("custom_metadata_focal_property", "") != "":
+                            try:
+                                focal = evaluate_expression(meta,
+                                                            self._preset.properties().get(
+                                                                "custom_metadata_focal_property", ""))
+                                self._version_data['sg_focal_length_metadata'] = float(focal)
+                            except:
+                                self.app.log_info("Unable to gather focal metadata")
+
+                        if self._preset.properties().get("custom_metadata_iso_property", "") != "":
+                            try:
+                                iso = evaluate_expression(meta,
+                                                          self._preset.properties().get(
+                                                              "custom_metadata_iso_property",
+                                                              ""))
+                                self._version_data['sg_iso'] = int(iso)
+                            except:
+                                self.app.log_info("Unable to gather iso metadata")
+
+                        if self._preset.properties().get("custom_metadata_wb_property", "") != "":
+                            try:
+                                wb = evaluate_expression(meta,
+                                                         self._preset.properties().get(
+                                                             "custom_metadata_wb_property",
+                                                             ""))
+                                self._version_data['sg_wb'] = int(wb)
+                            except:
+                                self.app.log_info("Unable to gather wb metadata")
+
+                        if self._preset.properties().get("custom_metadata_camera_property", "") != "":
+                            try:
+                                camera = evaluate_expression(meta,
+                                                             self._preset.properties().get(
+                                                                 "custom_metadata_camera_property",
+                                                                 ""))
+                                self._version_data['sg_camera_model'] = camera
+                            except:
+                                self.app.log_info("Unable to gather camera metadata")
+
+                        if self._preset.properties().get("custom_metadata_shutter_property", "") != "":
+                            try:
+                                shutter = evaluate_expression(meta,
+                                                              self._preset.properties().get(
+                                                                  "custom_metadata_shutter_property",
+                                                                  ""))
+                                self._version_data['sg_shutter'] = shutter
+                            except:
+                                self.app.log_info("Unable to gather shutter metadata")
+
+                        if self._preset.properties().get("custom_metadata_lmt_property", "") != "":
+                            try:
+                                lmt = evaluate_expression(meta,
+                                                          self._preset.properties().get(
+                                                              "custom_metadata_lmt_property",
+                                                              ""))
+                                self._version_data['sg_lmt'] = lmt
+                            except:
+                                self.app.log_info("Unable to gather lmt metadata")
+
+                        if self._preset.properties().get("custom_metadata_tilt_property", "") != "":
+                            try:
+                                tilt = evaluate_expression(meta,
+                                                           self._preset.properties().get(
+                                                               "custom_metadata_tilt_property", ""))
+                                self._version_data['sg_tilt'] = float(tilt)
+                            except:
+                                self.app.log_info("Unable to gather tilt metadata")
+
+                        if self._preset.properties().get("custom_metadata_roll_property", "") != "":
+                            try:
+                                roll = evaluate_expression(meta,
+                                                           self._preset.properties().get(
+                                                               "custom_metadata_roll_property", ""))
+                                self._version_data['sg_roll'] = float(roll)
+                            except:
+                                self.app.log_info("Unable to gather shutter metadata")
+
+                        width = meta['media.input.width']
+                        height = meta['media.input.height']
+                        self._version_data['sg_width'] = int(width)
+                        self._version_data['sg_height'] = int(height)
+
+                    except Exception as e:
+                        self.app.log_info(e)
+                        self.app.log_info("Unable to retrieve metadata")
+
             # call the update version hook to allow for customization
             self.app.execute_hook(
                 "hook_update_version_data",
@@ -463,33 +625,7 @@ class ShotgunTranscodeExporter(
             self.app.sgtk
         )
 
-        # DPS metadata inject
-        if self._preset.properties().get("custom_metadata_bool_property", True):
-            if '_VREF_' not in os.path.basename(self._resolved_export_path):
-                try:
-                    meta = self._item.source().mediaSource().metadata()
-                    width = int(meta['media.input.width'])
-                    height = int(meta['media.input.height'])
-                    args['sg_width'] = width
-                    args['sg_height'] = height
-                    try:
-                        focal = float(meta['media.exr.camera_focal'])/1000
-                        reel = meta['media.exr.shoot_scene_reel_number']
-                        iso = int(meta['media.exr.camera_iso'])
-                        wb = int(meta['media.exr.camera_white_kelvin'])
-                        camera = meta['media.exr.camera_type']
 
-                        args['sg_focal_length'] = focal
-                        args['sg_reel_name'] = reel
-                        args['sg_iso'] = iso
-                        args['sg_wb'] = wb
-                        args['sg_camera_model'] = camera
-                    except Exception as e:
-                        print (e)
-                        print("Unable to inject exr metadata to published_file")
-                except Exception as e:
-                    print(e)
-                    print("Unable to inject metadata to published_file")
 
         # register publish
         self.app.log_debug("Register publish in shotgun: %s" % str(args))

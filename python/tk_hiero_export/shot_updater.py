@@ -10,6 +10,7 @@
 
 import hiero.core
 from hiero.exporters import FnShotExporter
+import re
 
 from .base import ShotgunHieroObjectBase
 from .collating_exporter import CollatingExporter
@@ -32,6 +33,79 @@ class ShotgunShotUpdater(
         FnShotExporter.ShotTask.__init__(self, initDict)
         CollatingExporter.__init__(self)
         self._cut_order = None
+
+
+    ###EFECTOSCOPIO funciones para configuración de campos de metadata y expresiones
+
+
+    EXPR_PATTERN = re.compile(r"\{([^}]+)\}(?:\[(.*?)\])?")
+
+    def resolve_variable(meta, varname: str) -> str:
+        # Replace this with your metadata logic
+        return meta['media.' + varname]
+        # if varname == "exr.width":
+        #     return "A001C001_01"
+        # if varname == "exr.h":
+        #     return "AA"
+        return f"<unknown:{varname}>"
+
+    def parse_slice(token: str, value: str) -> str:
+        if ":" in token:
+            a, b = token.split(":", 1)
+            start = int(a) if a.strip() else None
+            end = int(b) if b.strip() else None
+            return value[slice(start, end)]
+        return value[int(token):] if token.startswith("-") else value[:int(token)]
+
+    def apply_transform(value: str, token: str) -> str:
+        t = token.strip()
+
+        if t in ("", "trim", "strip"):
+            return value.strip()
+        if t == "ltrim": return value.lstrip()
+        if t == "rtrim": return value.rstrip()
+        if t == "lower": return value.lower()
+        if t == "upper": return value.upper()
+        if t == "title": return value.title()
+        if t == "capitalize": return value.capitalize()
+
+        if t.startswith("replace:"):
+            _, old, new = t.split(":", 2)
+            return value.replace(old, new)
+
+        if t.startswith("remove:"):
+            _, sub = t.split(":", 1)
+            return value.replace(sub, "")
+
+        if t.startswith("split:"):
+            _, sep, idx = t.split(":", 2)
+            parts = value.split(sep)
+            return parts[int(idx)] if 0 <= int(idx) < len(parts) else ""
+
+        if t.startswith("join:"):
+            _, sep = t.split(":", 1)
+            return sep.join(value)
+
+        if ":" in t or t.lstrip("-").isdigit():
+            return parse_slice(t, value)
+
+        return value
+
+    def evaluate_expression(meta, text: str) -> str:
+        def repl(match):
+            varname = match.group(1)
+            pipeline = match.group(2)
+
+            value = resolve_variable(meta, varname)
+
+            if pipeline:
+                for tok in pipeline.split("|"):
+                    value = apply_transform(value, tok)
+
+            return value
+
+        # re.sub replaces ALL matches, leaving the rest unchanged
+        return EXPR_PATTERN.sub(repl, text)
 
     def _timecode(self, frame, fps, drop_frame=False):
         """Convenience wrapper to convert a given frame and fps to a timecode.
@@ -318,9 +392,8 @@ class ShotgunShotUpdater(
         )
         if 'PARAFX' in self._resolved_export_path:
             if self._preset.properties().get("custom_sourceClip_bool_property", True):
-                sourceclip_field = "media." + self._preset.properties().get("custom_sourceClip_text_property", "")
                 meta = self._item.source().mediaSource().metadata()
-                sourceclip_name = meta[sourceclip_field]
+                sourceclip_name = evaluate_expression(meta, self._preset.properties().get("custom_sourceClip_text_property", ""))
                 sg = self.app.shotgun
                 filters = [
                     ["project", "is", self.app.context.project],
@@ -340,28 +413,78 @@ class ShotgunShotUpdater(
             if self._preset.properties().get("custom_metadata_bool_property", True):
                 try:
                     meta = self._item.source().mediaSource().metadata()
+                    if self._preset.properties().get("custom_metadata_focal_property", "") != "":
+                        try:
+                            focal = evaluate_expression(meta,
+                                                    self._preset.properties().get("custom_metadata_focal_property", ""))
+                            sg_shot['sg_focal_length_metadata'] = float(focal)
+                        except:
+                            self.app.log_info("Unable to gather focal metadata")
+
+                    if self._preset.properties().get("custom_metadata_iso_property", "") != "":
+                        try:
+                            iso = evaluate_expression(meta,
+                                                    self._preset.properties().get("custom_metadata_iso_property", ""))
+                            sg_shot['sg_iso'] = int(iso)
+                        except:
+                            self.app.log_info("Unable to gather iso metadata")
+
+                    if self._preset.properties().get("custom_metadata_wb_property", "") != "":
+                        try:
+                            wb = evaluate_expression(meta,
+                                                  self._preset.properties().get("custom_metadata_wb_property", ""))
+                            sg_shot['sg_wb'] = int(wb)
+                        except:
+                            self.app.log_info("Unable to gather wb metadata")
+
+                    if self._preset.properties().get("custom_metadata_camera_property", "") != "":
+                        try:
+                            camera = evaluate_expression(meta,
+                                                  self._preset.properties().get("custom_metadata_camera_property", ""))
+                            sg_shot['sg_camera_model'] = camera
+                        except:
+                            self.app.log_info("Unable to gather camera metadata")
+
+                    if self._preset.properties().get("custom_metadata_shutter_property", "") != "":
+                        try:
+                            shutter = evaluate_expression(meta,
+                                                  self._preset.properties().get("custom_metadata_shutter_property", ""))
+                            sg_shot['sg_shutter'] = shutter
+                        except:
+                            self.app.log_info("Unable to gather shutter metadata")
+
+                    if self._preset.properties().get("custom_metadata_lmt_property", "") != "":
+                        try:
+                            lmt = evaluate_expression(meta,
+                                                  self._preset.properties().get("custom_metadata_lmt_property", ""))
+                            sg_shot['sg_lmt'] = lmt
+                        except:
+                            self.app.log_info("Unable to gather lmt metadata")
+
+                    if self._preset.properties().get("custom_metadata_tilt_property", "") != "":
+                        try:
+                            tilt = evaluate_expression(meta,
+                                                  self._preset.properties().get("custom_metadata_tilt_property", ""))
+                            sg_shot['sg_tilt'] = float(tilt)
+                        except:
+                            self.app.log_info("Unable to gather tilt metadata")
+
+                    if self._preset.properties().get("custom_metadata_roll_property", "") != "":
+                        try:
+                            roll = evaluate_expression(meta,
+                                                  self._preset.properties().get("custom_metadata_roll_property", ""))
+                            sg_shot['sg_roll'] = float(roll)
+                        except:
+                            self.app.log_info("Unable to gather shutter metadata")
+
                     width = meta['media.input.width']
                     height = meta['media.input.height']
                     sg_shot['sg_width'] = int(width)
                     sg_shot['sg_height'] = int(height)
-                    try:
-                        focal = meta['media.exr.camera_focal']
-                        reel = meta['media.exr.shoot_scene_reel_number']
-                        iso = meta['media.exr.camera_iso']
-                        wb = meta['media.exr.camera_white_kelvin']
-                        camera = meta['media.exr.camera_type']
-                        sg_shot['sg_focal_length_metadata'] = float(focal)/1000
-                        sg_shot['sg_reel_name'] = reel
-                        sg_shot['sg_iso'] = int(iso)
-                        sg_shot['sg_wb'] = int(wb)
-                        sg_shot['sg_camera_model'] = camera
-                    except Exception as e:
-                        print(e)
-                        print("Unable to retrieve metadata")
 
                 except Exception as e:
-                    print(e)
-                    print("Unable to retrieve metadata")
+                    self.app.log_info(e)
+                    self.app.log_info("Unable to retrieve metadata")
 
         # commit the changes and update the thumbnail
         self.app.execute_hook_method(
