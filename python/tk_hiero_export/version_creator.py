@@ -475,7 +475,7 @@ class ShotgunTranscodeExporter(
                                 focal = evaluate_expression(meta,
                                                             self._preset.properties().get(
                                                                 "custom_metadata_focal_property", ""))
-                                self._version_data['sg_focal_length_metadata'] = float(focal)
+                                self._version_data['sg_focal_length_metadata'] = focal
                             except:
                                 self.app.log_info("Unable to gather focal metadata")
 
@@ -485,7 +485,7 @@ class ShotgunTranscodeExporter(
                                                           self._preset.properties().get(
                                                               "custom_metadata_iso_property",
                                                               ""))
-                                self._version_data['sg_iso'] = int(iso)
+                                self._version_data['sg_iso'] = iso
                             except:
                                 self.app.log_info("Unable to gather iso metadata")
 
@@ -495,7 +495,7 @@ class ShotgunTranscodeExporter(
                                                          self._preset.properties().get(
                                                              "custom_metadata_wb_property",
                                                              ""))
-                                self._version_data['sg_wb'] = int(wb)
+                                self._version_data['sg_wb'] = wb
                             except:
                                 self.app.log_info("Unable to gather wb metadata")
 
@@ -519,22 +519,12 @@ class ShotgunTranscodeExporter(
                             except:
                                 self.app.log_info("Unable to gather shutter metadata")
 
-                        if self._preset.properties().get("custom_metadata_lmt_property", "") != "":
-                            try:
-                                lmt = evaluate_expression(meta,
-                                                          self._preset.properties().get(
-                                                              "custom_metadata_lmt_property",
-                                                              ""))
-                                self._version_data['sg_lmt'] = lmt
-                            except:
-                                self.app.log_info("Unable to gather lmt metadata")
-
                         if self._preset.properties().get("custom_metadata_tilt_property", "") != "":
                             try:
                                 tilt = evaluate_expression(meta,
                                                            self._preset.properties().get(
                                                                "custom_metadata_tilt_property", ""))
-                                self._version_data['sg_tilt'] = float(tilt)
+                                self._version_data['sg_tilt'] = tilt
                             except:
                                 self.app.log_info("Unable to gather tilt metadata")
 
@@ -543,9 +533,9 @@ class ShotgunTranscodeExporter(
                                 roll = evaluate_expression(meta,
                                                            self._preset.properties().get(
                                                                "custom_metadata_roll_property", ""))
-                                self._version_data['sg_roll'] = float(roll)
+                                self._version_data['sg_roll'] = roll
                             except:
-                                self.app.log_info("Unable to gather shutter metadata")
+                                self.app.log_info("Unable to gather roll metadata")
 
                         width = meta['media.input.width']
                         height = meta['media.input.height']

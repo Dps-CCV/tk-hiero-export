@@ -417,7 +417,7 @@ class ShotgunShotUpdater(
                         try:
                             focal = evaluate_expression(meta,
                                                     self._preset.properties().get("custom_metadata_focal_property", ""))
-                            sg_shot['sg_focal_length_metadata'] = float(focal)
+                            sg_shot['sg_focal_length_metadata'] = focal
                         except:
                             self.app.log_info("Unable to gather focal metadata")
 
@@ -425,7 +425,7 @@ class ShotgunShotUpdater(
                         try:
                             iso = evaluate_expression(meta,
                                                     self._preset.properties().get("custom_metadata_iso_property", ""))
-                            sg_shot['sg_iso'] = int(iso)
+                            sg_shot['sg_iso'] = iso
                         except:
                             self.app.log_info("Unable to gather iso metadata")
 
@@ -433,7 +433,7 @@ class ShotgunShotUpdater(
                         try:
                             wb = evaluate_expression(meta,
                                                   self._preset.properties().get("custom_metadata_wb_property", ""))
-                            sg_shot['sg_wb'] = int(wb)
+                            sg_shot['sg_wb'] = wb
                         except:
                             self.app.log_info("Unable to gather wb metadata")
 
@@ -465,7 +465,7 @@ class ShotgunShotUpdater(
                         try:
                             tilt = evaluate_expression(meta,
                                                   self._preset.properties().get("custom_metadata_tilt_property", ""))
-                            sg_shot['sg_tilt'] = float(tilt)
+                            sg_shot['sg_tilt'] = tilt
                         except:
                             self.app.log_info("Unable to gather tilt metadata")
 
@@ -473,9 +473,9 @@ class ShotgunShotUpdater(
                         try:
                             roll = evaluate_expression(meta,
                                                   self._preset.properties().get("custom_metadata_roll_property", ""))
-                            sg_shot['sg_roll'] = float(roll)
+                            sg_shot['sg_roll'] = roll
                         except:
-                            self.app.log_info("Unable to gather shutter metadata")
+                            self.app.log_info("Unable to gather roll metadata")
 
                     width = meta['media.input.width']
                     height = meta['media.input.height']
