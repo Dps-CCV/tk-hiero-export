@@ -11,6 +11,7 @@
 import hiero.core
 from hiero.exporters import FnShotExporter
 import re
+import os
 
 from .base import ShotgunHieroObjectBase
 from .collating_exporter import CollatingExporter
