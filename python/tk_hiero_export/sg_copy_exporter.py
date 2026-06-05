@@ -649,8 +649,9 @@ class ShotgunCopyExporter(ShotgunHieroObjectBase, FnCopyExporter.CopyExporter, C
             # register publish
             self.app.log_debug("Register publish in shotgun: %s" % str(args))
             pub_data = tank.util.register_publish(**args)
-            status = {"sg_status_list": "psu"}
-            self.app.shotgun.update("Task", self._sg_task['id'], status)
+            if self._sg_task is not None:
+                status = {"sg_status_list": "psu"}
+                self.app.shotgun.update("Task", self._sg_task['id'], status)
 
 
             if self._extra_publish_data is not None:
