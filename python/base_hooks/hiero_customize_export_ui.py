@@ -9,259 +9,242 @@
 # not expressly granted therein are reserved by Shotgun Software Inc.
 
 import sgtk
+from sgtk.platform.qt import QtGui
 
 HookBaseClass = sgtk.get_hook_baseclass()
 
 
 class HieroCustomizeExportUI(HookBaseClass):
-    """
-    This class defines methods that can be used to customize the UI of the various
-    Shotgun-related exporters. Each processor has its own set of create/get/set
-    methods, allowing for customizable UI elements for each type of export.
-
-    Example properties embedded into a custom QGroupBox:
-
-    .. figure:: ./resources/hiero_export_custom_ui.png
-
-    ..
-
-    Creating custom UI elements for the Hiero export app involves three steps:
-
-    - Creating a widget
-    - Defining custom properties to add to the associated preset
-    - Setting the widget up to display controls for the custom properties
-    """
-
     def create_shot_processor_widget(self, parent_widget):
-        """
-        Builds and returns a custom widget to be embedded in the parent exporter.
-        If a custom widget is returned by this method, it will be added to the
-        parent exporter's layout.
-
-        Example Implementation:
-
-        .. code-block:: python
-
-            widget = QtGui.QGroupBox("My Custom Properties", parent_widget)
-            widget.setLayout(QtGui.QFormLayout())
-            return widget
-
-        :param parent_widget: The parent widget.
-
-        :returns: A custom widget.
-        """
-        return None
+        widget = QtGui.QGroupBox("Settings", parent_widget)
+        widget.setLayout(QtGui.QFormLayout())
+        return widget
 
     def get_shot_processor_ui_properties(self):
-        """
-        Gets a list of property dictionaries describing the custom properties
-        required by the custom widget. This method will only be run if the
-        associated create widget hook method returns a widget. The dictionaries
-        will be turned into property widgets by the app before being passed to
-        the associated set properties hook method. The order that the dictionaries
-        are returned by this method is maintained when they are passed to the
-        associated set hook method.
+        return [
+            dict(
+                label="Create Cut:",
+                name="custom_create_cut_bool_property",
+                value=True,
+                tooltip="Create a Cut and CutItems in Shotgun...",
+            ),
+            dict(
+                label="Cut In:",
+                name="custom_cut_in_bool_property",
+                value=True,
+                tooltip="Update 'sg_cut_in' on the Shot entity.",
+            ),
+            dict(
+                label="Cut Out:",
+                name="custom_cut_out_bool_property",
+                value=True,
+                tooltip="Update 'sg_cut_out' on the Shot entity.",
+            ),
+            dict(
+                label="Head In:",
+                name="custom_head_in_bool_property",
+                value=True,
+                tooltip="Update 'sg_head_in' on the Shot entity.",
+            ),
+            dict(
+                label="Tail Out:",
+                name="custom_tail_out_bool_property",
+                value=True,
+                tooltip="Update 'sg_tail_out' on the Shot entity.",
+            ),
+            dict(
+                label="Export Source Clip:",
+                name="custom_sourceClip_bool_property",
+                value=True,
+                tooltip="Update 'sg_source_clip' on the Shot entity.",
+            ),
+            dict(
+                label="Source Clip Field::",
+                name="custom_sourceClip_text_property",
+                value="exr.owner",
+                tooltip="Update source clip data looking to this metadata field.",
+            ),
+            dict(
+                label="Metadata:",
+                name="custom_metadata_bool_property",
+                value=True,
+                tooltip="Update metadata fields on the Shot entity.",
+            ),
+            dict(
+                label="LMT Field:",
+                name="custom_metadata_lmt_property",
+                value="exr.lmt",
+                tooltip="""Update lmt data looking to this metadata field. Template Engine: Complete Guide
 
-        Example Implementation:
+This templating engine lets you build dynamic strings using variables wrapped in {} and optional transformations wrapped in []. It supports multiple variables, pipelines, slicing, regex, and concatenation with literal text.
 
-        .. code-block:: python
+1. Variable Syntax
+Variables use curly braces:
+{variable}
+{object.property}
+{metadata.exr.width}
+Dot notation is supported. Variables are resolved using your custom resolver function.
 
-            return [
-                dict(
-                    label="Create Cut:",
-                    name="custom_create_cut_bool_property",
-                    value=True,
-                    tooltip="Create a Cut and CutItems in Flow Production Tracking...",
-                ),
-                dict(
-                    label="Head In:",
-                    name="custom_head_in_bool_property",
-                    value=True,
-                    tooltip="Update 'sg_head_in' on the Shot entity.",
-                ),
-            ]
+2. Transforms / Operations
+{variable}[operation]
+{variable}[op1|op2|op3]
+Transforms apply left to right.
+Examples:
+{name}[trim|title]
+{exr.width}[3:-2]
+{code}[replace:-:_|upper]
 
-        :returns: A list of dictionaries.
-        :rtype: list
-        """
-        return []
+3. Concatenation
+Mix literals and variables freely:
+{exr.width}[3:-2]_{exr.h}_003
+
+4. Pipeline Syntax
+{title}[trim|lower|replace: :_]
+{exr.width}[trim|:-3]
+
+5. Supported Operations
+
+5.1 Trimming
+[trim], [strip], [] → strip whitespace
+[ltrim] → left trim
+[rtrim] → right trim
+
+5.2 Case Operations
+[lower], [upper], [title], [capitalize]
+
+5.3 Slicing
+[start:end], [:], [:N], [N:], [:-N], [N]
+
+5.4 Replace & Remove
+[replace:old:new]
+[remove:substring]
+
+5.5 Split
+[split:separator:index]
+
+5.6 Join
+[join:separator]
+
+5.7 Regex
+[regex:pattern:replacement]
+
+5.8 Padding
+[padleft:len:char], [padright:len:char], [center:len:char]
+
+6. Multiple Variables
+Example:
+shot_{seq}_{shot}[upper]_v{version}[padleft:3:0]
+
+7. Real Usage Examples
+Filename building, metadata-based strings, path extraction, normalization, hashing.
+
+8. Behavior
+Unknown transforms → ignored
+Unknown variables → resolver decides
+Slicing always safe
+
+Summary:
+This engine uses {var} and [operation] to build powerful, safe, dynamic strings with trimming, casing, replacement, slicing, regex, padding, and pipelines. Literal text mixes naturally with expressions for building filenames, metadata-driven IDs, and normalized strings.
+""",
+            ),
+            dict(
+                label="Focal Field:",
+                name="custom_metadata_focal_property",
+                value="exr.focal",
+                tooltip="Update focal data looking to this metadata field.",
+            ),
+            dict(
+                label="ISO Field:",
+                name="custom_metadata_iso_property",
+                value="exr.isoSpeed",
+                tooltip="Update iso data looking to this metadata field.",
+            ),
+            dict(
+                label="Shutter Field:",
+                name="custom_metadata_shutter_property",
+                value="exr.shutter",
+                tooltip="Update shutter data looking to this metadata field.",
+            ),
+            dict(
+                label="WB Field:",
+                name="custom_metadata_wb_property",
+                value="exr.wb",
+                tooltip="Update wb data looking to this metadata field.",
+            ),
+            dict(
+                label="Tilt Field:",
+                name="custom_metadata_tilt_property",
+                value="exr.tilt",
+                tooltip="Update tilt data looking to this metadata field.",
+            ),
+            dict(
+                label="Roll Field:",
+                name="custom_metadata_roll_property",
+                value="exr.roll",
+                tooltip="Update roll data looking to this metadata field.",
+            ),
+            dict(
+                label="Camera Field:",
+                name="custom_metadata_camera_property",
+                value="exr.cameraModel",
+                tooltip="Update camera data looking to this metadata field.",
+            ),
+
+        ]
 
     def set_shot_processor_ui_properties(self, widget, properties):
-        """
-        Sets any custom properties described by get_shot_processor_ui_properties
-        on the custom widget returned by create_shot_processor_widget. This method
-        will only be called if the create method is implemented to return a custom
-        widget. The order of the properties within the dictionary passed in is the
-        same as the order they're returned in the get properties hook method.
-
-        Example Implementation:
-
-        .. code-block:: python
-
-            layout = widget.layout()
-            for label, prop in properties.iteritems():
-                layout.addRow(label, prop)
-
-        :param widget: The Qt widget that was created by the associated create
-            widget hook method.
-        :param OrderedDict properties: A dict containing property widget
-            objects, keyed by label, that were constructed from the data
-            built by the associated get properties hook method.
-        """
-        return
+        layout = widget.layout()
+        for label, prop in properties.items():
+            layout.addRow(label, prop)
 
     def create_transcode_exporter_widget(self, parent_widget):
-        """
-        Builds and returns a custom widget to be embedded in the parent exporter.
-        If a custom widget is returned by this method, it will be added to the
-        parent exporter's layout.
-
-        .. note:: See the :meth:`create_shot_processor_widget` method for
-            more detailed documentation.
-
-        :param parent_widget: The parent widget.
-
-        :returns: A custom widget.
-        """
-        return None
+        widget = QtGui.QGroupBox("Settings", parent_widget)
+        widget.setLayout(QtGui.QFormLayout())
+        return widget
 
     def get_transcode_exporter_ui_properties(self):
-        """
-        Gets a list of property dictionaries describing the custom properties
-        required by the custom widget. This method will only be run if the
-        associated create widget hook method returns a widget. The dictionaries
-        will be turned into property widgets by the app before being passed to
-        the associated set properties hook method. The order that the dictionaries
-        are returned by this method is maintained when they are passed to the
-        associated set hook method.
-
-        .. note:: See the :meth:`get_shot_processor_ui_properties` method for
-            more detailed documentation.
-
-        :returns: A list of dictionaries.
-        :rtype: list
-        """
         return []
 
     def set_transcode_exporter_ui_properties(self, widget, properties):
-        """
-        Sets any custom properties described by get_transcode_exporter_ui_properties
-        on the custom widget returned by create_transcode_exporter_widget. This method
-        will only be called if the create method is implemented to return a custom
-        widget. The order of the properties within the dictionary passed in is the
-        same as the order they're returned in the get properties hook method.
+        layout = widget.layout()
+        for label, prop in properties.items():
+            layout.addRow(label, prop)
 
-        .. note:: See the :meth:`set_shot_processor_ui_properties` method for
-            for an example implementation.
+    def create_copy_exporter_widget(self, parent_widget):
+        widget = QtGui.QGroupBox("Settings", parent_widget)
+        widget.setLayout(QtGui.QFormLayout())
+        return widget
 
-        :param widget: The Qt widget that was created by the associated create
-            widget hook method.
-        :param OrderedDict properties: A dict containing property widget
-            objects, keyed by label, that were constructed from the data
-            built by the associated get properties hook method.
-        """
-        return
+    def get_copy_exporter_ui_properties(self):
+        return []
+
+    def set_copy_exporter_ui_properties(self, widget, properties):
+        layout = widget.layout()
+        for label, prop in properties.items():
+            layout.addRow(label, prop)
 
     def create_audio_exporter_widget(self, parent_widget):
-        """
-        Builds and returns a custom widget to be embedded in the parent exporter.
-        If a custom widget is returned by this method, it will be added to the
-        parent exporter's layout.
-
-        .. note:: See the :meth:`create_shot_processor_widget` method for
-            more detailed documentation.
-
-        :param parent_widget: The parent widget.
-
-        :returns: A custom widget.
-        """
-        return None
+        widget = QtGui.QGroupBox("Settings", parent_widget)
+        widget.setLayout(QtGui.QFormLayout())
+        return widget
 
     def get_audio_exporter_ui_properties(self):
-        """
-        Gets a list of property dictionaries describing the custom properties
-        required by the custom widget. This method will only be run if the
-        associated create widget hook method returns a widget. The dictionaries
-        will be turned into property widgets by the app before being passed to
-        the associated set properties hook method. The order that the dictionaries
-        are returned by this method is maintained when they are passed to the
-        associated set hook method.
-
-        .. note:: See the :meth:`get_shot_processor_ui_properties` method for
-            more detailed documentation.
-
-        :returns: A list of dictionaries.
-        :rtype: list
-        """
         return []
 
     def set_audio_exporter_ui_properties(self, widget, properties):
-        """
-        Sets any custom properties described by get_audio_exporter_ui_properties
-        on the custom widget returned by create_audio_exporter_widget. This method
-        will only be called if the create method is implemented to return a custom
-        widget. The order of the properties within the dictionary passed in is the
-        same as the order they're returned in the get properties hook method.
-
-        .. note:: See the :meth:`set_shot_processor_ui_properties` method for
-            for an example implementation.
-
-        :param widget: The Qt widget that was created by the associated create
-            widget hook method.
-        :param OrderedDict properties: A dict containing property widget
-            objects, keyed by label, that were constructed from the data
-            built by the associated get properties hook method.
-        """
-        return
+        layout = widget.layout()
+        for label, prop in properties.items():
+            layout.addRow(label, prop)
 
     def create_nuke_shot_exporter_widget(self, parent_widget):
-        """
-        Builds and returns a custom widget to be embedded in the parent exporter.
-        If a custom widget is returned by this method, it will be added to the
-        parent exporter's layout.
-
-        .. note:: See the :meth:`create_shot_processor_widget` method for
-            more detailed documentation.
-
-        :param parent_widget: The parent widget.
-
-        :returns: A custom widget.
-        """
-        return None
+        widget = QtGui.QGroupBox("Settings", parent_widget)
+        widget.setLayout(QtGui.QFormLayout())
+        return widget
 
     def get_nuke_shot_exporter_ui_properties(self):
-        """
-        Gets a list of property dictionaries describing the custom properties
-        required by the custom widget. This method will only be run if the
-        associated create widget hook method returns a widget. The dictionaries
-        will be turned into property widgets by the app before being passed to
-        the associated set properties hook method. The order that the dictionaries
-        are returned by this method is maintained when they are passed to the
-        associated set hook method.
-
-        .. note:: See the :meth:`get_shot_processor_ui_properties` method for
-            more detailed documentation.
-
-        :returns: A list of dictionaries.
-        :rtype: list
-        """
         return []
 
     def set_nuke_shot_exporter_ui_properties(self, widget, properties):
-        """
-        Sets any custom properties described by get_nuke_shot_exporter_ui_properties
-        on the custom widget returned by create_nuke_shot_exporter_widget. This method
-        will only be called if the create method is implemented to return a custom
-        widget. The order of the properties within the dictionary passed in is the
-        same as the order they're returned in the get properties hook method.
-
-        .. note:: See the :meth:`set_shot_processor_ui_properties` method for
-            for an example implementation.
-
-        :param widget: The Qt widget that was created by the associated create
-            widget hook method.
-        :param OrderedDict properties: A dict containing property widget
-            objects, keyed by label, that were constructed from the data
-            built by the associated get properties hook method.
-        """
-        return
+        layout = widget.layout()
+        for label, prop in properties.items():
+            layout.addRow(label, prop)

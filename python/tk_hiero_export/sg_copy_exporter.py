@@ -159,7 +159,7 @@ class ShotgunCopyExporter(ShotgunHieroObjectBase, FnCopyExporter.CopyExporter, C
 
     EXPR_PATTERN = re.compile(r"\{([^}]+)\}(?:\[(.*?)\])?")
 
-    def resolve_variable(meta, varname: str) -> str:
+    def resolve_variable(self, meta, varname: str) -> str:
         # Replace this with your metadata logic
         return meta['media.' + varname]
         # if varname == "exr.width":
@@ -168,7 +168,7 @@ class ShotgunCopyExporter(ShotgunHieroObjectBase, FnCopyExporter.CopyExporter, C
         #     return "AA"
         return f"<unknown:{varname}>"
 
-    def parse_slice(token: str, value: str) -> str:
+    def parse_slice(self, token: str, value: str) -> str:
         if ":" in token:
             a, b = token.split(":", 1)
             start = int(a) if a.strip() else None
@@ -176,7 +176,7 @@ class ShotgunCopyExporter(ShotgunHieroObjectBase, FnCopyExporter.CopyExporter, C
             return value[slice(start, end)]
         return value[int(token):] if token.startswith("-") else value[:int(token)]
 
-    def apply_transform(value: str, token: str) -> str:
+    def apply_transform(self, value: str, token: str) -> str:
         t = token.strip()
 
         if t in ("", "trim", "strip"):
@@ -206,25 +206,25 @@ class ShotgunCopyExporter(ShotgunHieroObjectBase, FnCopyExporter.CopyExporter, C
             return sep.join(value)
 
         if ":" in t or t.lstrip("-").isdigit():
-            return parse_slice(t, value)
+            return self.parse_slice(t, value)
 
         return value
 
-    def evaluate_expression(meta, text: str) -> str:
+    def evaluate_expression(self, meta, text: str) -> str:
         def repl(match):
             varname = match.group(1)
             pipeline = match.group(2)
 
-            value = resolve_variable(meta, varname)
+            value = self.resolve_variable(meta, varname)
 
             if pipeline:
                 for tok in pipeline.split("|"):
-                    value = apply_transform(value, tok)
+                    value = self.apply_transform(value, tok)
 
             return value
 
         # re.sub replaces ALL matches, leaving the rest unchanged
-        return EXPR_PATTERN.sub(repl, text)
+        return self.EXPR_PATTERN.sub(repl, text)
 
 
     def sequenceName(self):
@@ -490,13 +490,50 @@ class ShotgunCopyExporter(ShotgunHieroObjectBase, FnCopyExporter.CopyExporter, C
                 self._version_data["sg_task"] = self._sg_task
 
             # DPS metadata inject
+            if self._preset.properties().get("custom_sourceClip_bool_property", True):
+                meta = self._item.source().mediaSource().metadata()
+                sourceclip_name = self.evaluate_expression(meta, self._preset.properties().get(
+                    "custom_sourceClip_text_property", ""))
+                sg = self.app.shotgun
+                filters = [
+                    ["project", "is", self.app.context.project],
+                    ["code", "is", str(sourceclip_name)],
+                ]
+                sourceClip = sg.find_one("SourceClip", filters, ["code"])
+                if not sourceClip:
+                    sourceclip_data = {
+                        "code": str(sourceclip_name),
+                        "project": self.app.context.project,
+                    }
+                    sourceClip = sg.create("SourceClip", sourceclip_data)
+
+                self._version_data['source_clip'] = sourceClip
             if self._preset.properties().get("custom_metadata_bool_property", True):
                 if '_VREF_' not in os.path.basename(self._resolved_export_path):
                     try:
                         meta = self._item.source().mediaSource().metadata()
+                        try:
+                            sourceclip_name = self.evaluate_expression(meta, self._preset.properties().get(
+                                "custom_sourceClip_text_property", ""))
+                            sg = self.app.shotgun
+                            filters = [
+                                ["project", "is", self.app.context.project],
+                                ["code", "is", str(sourceclip_name)],
+                            ]
+                            sourceClip = sg.find_one("SourceClip", filters, ["code"])
+                            if not sourceClip:
+                                sourceclip_data = {
+                                    "code": str(sourceclip_name),
+                                    "project": self.app.context.project,
+                                }
+                                sourceClip = sg.create("SourceClip", sourceclip_data)
+
+                            self._version_data['source_clip'] = sourceClip
+                        except:
+                            self.app.log_info("Unable to gather sourceclip metadata")
                         if self._preset.properties().get("custom_metadata_focal_property", "") != "":
                             try:
-                                focal = evaluate_expression(meta,
+                                focal = self.evaluate_expression(meta,
                                                             self._preset.properties().get(
                                                                 "custom_metadata_focal_property", ""))
                                 self._version_data['sg_focal_length_metadata'] = focal
@@ -505,7 +542,7 @@ class ShotgunCopyExporter(ShotgunHieroObjectBase, FnCopyExporter.CopyExporter, C
 
                         if self._preset.properties().get("custom_metadata_iso_property", "") != "":
                             try:
-                                iso = evaluate_expression(meta,
+                                iso = self.evaluate_expression(meta,
                                                           self._preset.properties().get(
                                                               "custom_metadata_iso_property",
                                                               ""))
@@ -515,7 +552,7 @@ class ShotgunCopyExporter(ShotgunHieroObjectBase, FnCopyExporter.CopyExporter, C
 
                         if self._preset.properties().get("custom_metadata_wb_property", "") != "":
                             try:
-                                wb = evaluate_expression(meta,
+                                wb = self.evaluate_expression(meta,
                                                          self._preset.properties().get(
                                                              "custom_metadata_wb_property",
                                                              ""))
@@ -525,7 +562,7 @@ class ShotgunCopyExporter(ShotgunHieroObjectBase, FnCopyExporter.CopyExporter, C
 
                         if self._preset.properties().get("custom_metadata_camera_property", "") != "":
                             try:
-                                camera = evaluate_expression(meta,
+                                camera = self.evaluate_expression(meta,
                                                              self._preset.properties().get(
                                                                  "custom_metadata_camera_property",
                                                                  ""))
@@ -535,7 +572,7 @@ class ShotgunCopyExporter(ShotgunHieroObjectBase, FnCopyExporter.CopyExporter, C
 
                         if self._preset.properties().get("custom_metadata_shutter_property", "") != "":
                             try:
-                                shutter = evaluate_expression(meta,
+                                shutter = self.evaluate_expression(meta,
                                                               self._preset.properties().get(
                                                                   "custom_metadata_shutter_property",
                                                                   ""))
@@ -545,7 +582,7 @@ class ShotgunCopyExporter(ShotgunHieroObjectBase, FnCopyExporter.CopyExporter, C
 
                         if self._preset.properties().get("custom_metadata_tilt_property", "") != "":
                             try:
-                                tilt = evaluate_expression(meta,
+                                tilt = self.evaluate_expression(meta,
                                                            self._preset.properties().get(
                                                                "custom_metadata_tilt_property", ""))
                                 self._version_data['sg_tilt'] = tilt
@@ -554,7 +591,7 @@ class ShotgunCopyExporter(ShotgunHieroObjectBase, FnCopyExporter.CopyExporter, C
 
                         if self._preset.properties().get("custom_metadata_roll_property", "") != "":
                             try:
-                                roll = evaluate_expression(meta,
+                                roll = self.evaluate_expression(meta,
                                                            self._preset.properties().get(
                                                                "custom_metadata_roll_property", ""))
                                 self._version_data['sg_roll'] = roll
@@ -745,7 +782,7 @@ class ShotgunCopyPreset(ShotgunHieroObjectBase, FnCopyExporter.CopyPreset, Colla
 
         # Handle custom properties from the customize_export_ui hook.
         custom_properties = self._get_custom_properties(
-            "get_copy_exporter_ui_properties"
+            "get_shot_processor_ui_properties"
         ) or []
 
         self.properties().update({d["name"]: d["value"] for d in custom_properties})

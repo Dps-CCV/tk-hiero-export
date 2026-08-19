@@ -8,12 +8,13 @@
 # agreement to the Shotgun Pipeline Toolkit Source Code License. All rights
 # not expressly granted therein are reserved by Shotgun Software Inc.
 
-import sgtk
+import ast
 
-HookBaseClass = sgtk.get_hook_baseclass()
+from tank import Hook
+import tank.templatekey
 
 
-class HieroTranslateTemplate(HookBaseClass):
+class HieroTranslateTemplate(Hook):
     """
     This class implements a hook that's responsible for translating a Toolkit
     template object into a Hiero export string.
@@ -37,4 +38,44 @@ class HieroTranslateTemplate(HookBaseClass):
         :returns: A Hiero-compatible path.
         :rtype: str
         """
-        pass
+        # first convert basic fields
+        mapping = {
+            "{Sequence}": "{sequence}",
+            "{Shot}": "{shot}",
+            "{name}": "{clip}",
+            "{version}": "{tk_version}",
+            "{Track}": "{track}",
+        }
+
+        # see if we have a value to use for Step
+        try:
+            task_filter = self.parent.get_setting("default_task_filter", "[]")
+            task_filter = ast.literal_eval(task_filter)
+            for field, op, value in task_filter:
+                if field == "step.Step.code":
+                    mapping["{Step}"] = value
+        except ValueError:
+            # continue without Step
+            self.parent.log_error("Invalid value for 'default_task_filter'")
+
+        # get the string representation of the template object
+        template_str = template.definition
+
+        # simple string to string replacement
+        # the nuke script name is hard coded to ensure a valid template
+        if output_type == "script":
+            template_str = template_str.replace("{name}", "scene")
+
+        for orig, repl in mapping.items():
+            template_str = template_str.replace(orig, repl)
+
+        # replace {SEQ} style keys with their translated string value
+        for name, key in template.keys.items():
+            if isinstance(key, tank.templatekey.SequenceKey):
+                # this is a sequence template, for example {SEQ}
+                # replace it with ####
+                template_str = template_str.replace(
+                    "{%s}" % name, key.str_from_value("FORMAT:#")
+                )
+
+        return template_str

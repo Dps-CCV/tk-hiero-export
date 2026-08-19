@@ -13,6 +13,8 @@ from hiero.exporters import FnShotExporter
 import re
 import os
 
+
+
 from .base import ShotgunHieroObjectBase
 from .collating_exporter import CollatingExporter
 
@@ -35,13 +37,121 @@ class ShotgunShotUpdater(
         CollatingExporter.__init__(self)
         self._cut_order = None
 
+    def _export_cdl_lmt_effects(self):
+        import export_cdl_lmt
 
+        track_item = self._item
+
+        try:
+            cdl_folder = os.path.join(os.path.dirname(os.environ['OCIO']), 'luts').replace('\\', '/')
+        except Exception:
+            cdl_folder = None
+        try:
+            lmt_folder = os.path.join(os.path.dirname(os.path.dirname(os.environ['OCIO'])), 'SHOW_LUT').replace('\\',
+                                                                                                                '/')
+        except Exception:
+            lmt_folder = None
+
+        if not cdl_folder and not lmt_folder:
+            self.app.log_info("No CDL/LMT export folders configured — skipping.")
+            return None, None
+
+        cdl_name = None
+        lmt_name = None
+
+        # ── CDL ─────────────────────────────────────────────────────────────
+        if cdl_folder:
+            os.makedirs(cdl_folder, exist_ok=True)
+            cdl_paths, skip = export_cdl_lmt.export_cdl_effects(
+                track_item,
+                cdl_folder,
+                use_expr=True,
+                cdl_expr="{clip}",
+                overwrite=False,
+                use_subfolder=False,
+                subfolder_expr="",
+            )
+            self.app.log_info("CDL export: {} exported, {} skipped".format(
+                len(cdl_paths), skip))
+
+            if cdl_paths:
+                # File was written — get name from actual output path
+                cdl_name = os.path.splitext(os.path.basename(cdl_paths[0]))[0]
+            else:
+                # File was skipped (already exists) — resolve the name the same
+                # way export_cdl_effects would have, so we still return it
+                clip_name = track_item.name()
+                cdl_name = clip_name
+
+        # ── LMT ─────────────────────────────────────────────────────────────
+        if lmt_folder:
+            os.makedirs(lmt_folder, exist_ok=True)
+            lmt_paths, skip = export_cdl_lmt.export_lmt_effects(
+                track_item,
+                lmt_folder,
+                use_expr=False,
+                lmt_expr="",
+                overwrite=False,
+            )
+            self.app.log_info("LMT export: {} exported, {} skipped".format(
+                len(lmt_paths), skip))
+
+            if lmt_paths:
+                # File was written — get name from actual output path
+                lmt_name = os.path.splitext(os.path.basename(lmt_paths[0]))[0]
+            else:
+                # File was skipped — resolve the name from the node's file knob
+                # since lmt_expr is empty and use_expr is False, the original
+                # filename is retained, so read it directly from the effect node
+                try:
+                    for linked in track_item.linkedItems():
+                        if (hasattr(linked, "node") and
+                                linked.node().Class() == "OCIOFileTransform"):
+                            src = linked.node().knob("file").value()
+                            if src:
+                                lmt_name = os.path.splitext(
+                                    os.path.basename(src.replace("\\", "/")))[0]
+                            break
+                except Exception as e:
+                    self.app.log_warning("Could not resolve LMT name: {}".format(e))
+
+        self.app.log_info("CDL name: {}".format(cdl_name))
+        self.app.log_info("LMT name: {}".format(lmt_name))
+
+        return cdl_name, lmt_name
+
+    # def _get_parafx_sibling_task(self):
+    #     """
+    #     Walk the submission tree and return the sibling task whose
+    #     export path template contains 'PARAFX'. Returns None if not found.
+    #     """
+    #     try:
+    #         def _iter_tasks(node):
+    #             if hasattr(node, 'children'):
+    #                 for child in node.children():
+    #                     for t in _iter_tasks(child):
+    #                         yield t
+    #             else:
+    #                 yield node
+    #
+    #         for task in _iter_tasks(self._submission):
+    #             if task is self:
+    #                 continue
+    #             # Check the unresolved template — always contains PARAFX literally
+    #             export_path = getattr(task, '_exportPath', '') or ''
+    #             if 'PARAFX' in export_path:
+    #                 return task
+    #
+    #     except Exception as e:
+    #         self.app.log_info("_get_parafx_sibling_task error: {}".format(e))
+    #
+    #     return None
     ###EFECTOSCOPIO funciones para configuración de campos de metadata y expresiones
 
 
     EXPR_PATTERN = re.compile(r"\{([^}]+)\}(?:\[(.*?)\])?")
 
-    def resolve_variable(meta, varname: str) -> str:
+    def resolve_variable(self, meta, varname: str) -> str:
         # Replace this with your metadata logic
         return meta['media.' + varname]
         # if varname == "exr.width":
@@ -50,7 +160,7 @@ class ShotgunShotUpdater(
         #     return "AA"
         return f"<unknown:{varname}>"
 
-    def parse_slice(token: str, value: str) -> str:
+    def parse_slice(self, token: str, value: str) -> str:
         if ":" in token:
             a, b = token.split(":", 1)
             start = int(a) if a.strip() else None
@@ -58,7 +168,7 @@ class ShotgunShotUpdater(
             return value[slice(start, end)]
         return value[int(token):] if token.startswith("-") else value[:int(token)]
 
-    def apply_transform(value: str, token: str) -> str:
+    def apply_transform(self, value: str, token: str) -> str:
         t = token.strip()
 
         if t in ("", "trim", "strip"):
@@ -88,25 +198,25 @@ class ShotgunShotUpdater(
             return sep.join(value)
 
         if ":" in t or t.lstrip("-").isdigit():
-            return parse_slice(t, value)
+            return self.parse_slice(t, value)
 
         return value
 
-    def evaluate_expression(meta, text: str) -> str:
+    def evaluate_expression(self, meta, text: str) -> str:
         def repl(match):
             varname = match.group(1)
             pipeline = match.group(2)
 
-            value = resolve_variable(meta, varname)
+            value = self.resolve_variable(meta, varname)
 
             if pipeline:
                 for tok in pipeline.split("|"):
-                    value = apply_transform(value, tok)
+                    value = self.apply_transform(value, tok)
 
             return value
 
         # re.sub replaces ALL matches, leaving the rest unchanged
-        return EXPR_PATTERN.sub(repl, text)
+        return self.EXPR_PATTERN.sub(repl, text)
 
     def _timecode(self, frame, fps, drop_frame=False):
         """Convenience wrapper to convert a given frame and fps to a timecode.
@@ -386,106 +496,114 @@ class ShotgunShotUpdater(
             sg_shot['task_template'] = template
 
         # DPS SourceClip export
-        self._resolved_export_path = self.resolvedExportPath()
-        # convert slashes to native os style..
-        self._resolved_export_path = self._resolved_export_path.replace(
-            "/", os.path.sep
-        )
-        if 'PARAFX' in self._resolved_export_path:
-            if self._preset.properties().get("custom_sourceClip_bool_property", True):
+        if self._preset.properties().get("custom_sourceClip_bool_property", True):
+            meta = self._item.source().mediaSource().metadata()
+            sourceclip_name = self.evaluate_expression(meta, self._preset.properties().get("custom_sourceClip_text_property", ""))
+            sg = self.app.shotgun
+            filters = [
+                ["project", "is", self.app.context.project],
+                ["code", "is", str(sourceclip_name)],
+            ]
+            sourceClip = sg.find_one("SourceClip", filters, ["code"])
+            if not sourceClip:
+                sourceclip_data = {
+                    "code": str(sourceclip_name),
+                    "project": self.app.context.project,
+                }
+                sourceClip = sg.create("SourceClip", sourceclip_data)
+
+            sg_shot['sg_source_clip'] = sourceClip
+
+        #DPS metadata extract
+
+        # if self._preset.properties().get("custom_cdls_bool_property", True):
+        if self._preset.properties().get("custom_cdls_bool_property", True):
+            try:
+                cdl, lmt = self._export_cdl_lmt_effects()
+                if lmt != None:
+                    sg_shot['sg_lmt'] = lmt
+                if cdl != None:
+                    sg_shot['sg_cdl'] = cdl
+            except Exception as e:
+                self.app.log_warning("CDL/LMT export failed for {}: {}".format(
+                    self.shotName(), e))
+
+            # if self._preset.properties().get("custom_metadata_lmt_property", "") != "":
+            #     try:
+            #         lmt = self.evaluate_expression(meta,
+            #                                        self._preset.properties().get("custom_metadata_lmt_property", ""))
+            #         sg_shot['sg_lmt'] = lmt
+            #     except:
+            #         self.app.log_info("Unable to gather lmt metadata")
+
+
+        if self._preset.properties().get("custom_metadata_bool_property", True):
+            try:
                 meta = self._item.source().mediaSource().metadata()
-                sourceclip_name = evaluate_expression(meta, self._preset.properties().get("custom_sourceClip_text_property", ""))
-                sg = self.app.shotgun
-                filters = [
-                    ["project", "is", self.app.context.project],
-                    ["code", "is", str(sourceclip_name)],
-                ]
-                sourceClip = sg.find_one("SourceClip", filters, ["code"])
-                if not sourceClip:
-                    sourceclip_data = {
-                        "code": str(sourceclip_name),
-                        "project": self.app.context.project,
-                    }
-                    sourceClip = sg.create("SourceClip", sourceclip_data)
+                if self._preset.properties().get("custom_metadata_focal_property", "") != "":
+                    try:
+                        focal = self.evaluate_expression(meta,
+                                                self._preset.properties().get("custom_metadata_focal_property", ""))
+                        sg_shot['sg_focal_length_metadata'] = focal
+                    except:
+                        self.app.log_info("Unable to gather focal metadata")
 
-                sg_shot['sg_source_clip'] = sourceClip
+                if self._preset.properties().get("custom_metadata_iso_property", "") != "":
+                    try:
+                        iso = self.evaluate_expression(meta,
+                                                self._preset.properties().get("custom_metadata_iso_property", ""))
+                        sg_shot['sg_iso'] = iso
+                    except:
+                        self.app.log_info("Unable to gather iso metadata")
 
-            #DPS metadata extract
-            if self._preset.properties().get("custom_metadata_bool_property", True):
-                try:
-                    meta = self._item.source().mediaSource().metadata()
-                    if self._preset.properties().get("custom_metadata_focal_property", "") != "":
-                        try:
-                            focal = evaluate_expression(meta,
-                                                    self._preset.properties().get("custom_metadata_focal_property", ""))
-                            sg_shot['sg_focal_length_metadata'] = focal
-                        except:
-                            self.app.log_info("Unable to gather focal metadata")
+                if self._preset.properties().get("custom_metadata_wb_property", "") != "":
+                    try:
+                        wb = self.evaluate_expression(meta,
+                                              self._preset.properties().get("custom_metadata_wb_property", ""))
+                        sg_shot['sg_wb'] = wb
+                    except:
+                        self.app.log_info("Unable to gather wb metadata")
 
-                    if self._preset.properties().get("custom_metadata_iso_property", "") != "":
-                        try:
-                            iso = evaluate_expression(meta,
-                                                    self._preset.properties().get("custom_metadata_iso_property", ""))
-                            sg_shot['sg_iso'] = iso
-                        except:
-                            self.app.log_info("Unable to gather iso metadata")
+                if self._preset.properties().get("custom_metadata_camera_property", "") != "":
+                    try:
+                        camera = self.evaluate_expression(meta,
+                                              self._preset.properties().get("custom_metadata_camera_property", ""))
+                        sg_shot['sg_camera_model'] = camera
+                    except:
+                        self.app.log_info("Unable to gather camera metadata")
 
-                    if self._preset.properties().get("custom_metadata_wb_property", "") != "":
-                        try:
-                            wb = evaluate_expression(meta,
-                                                  self._preset.properties().get("custom_metadata_wb_property", ""))
-                            sg_shot['sg_wb'] = wb
-                        except:
-                            self.app.log_info("Unable to gather wb metadata")
+                if self._preset.properties().get("custom_metadata_shutter_property", "") != "":
+                    try:
+                        shutter = self.evaluate_expression(meta,
+                                              self._preset.properties().get("custom_metadata_shutter_property", ""))
+                        sg_shot['sg_shutter'] = shutter
+                    except:
+                        self.app.log_info("Unable to gather shutter metadata")
 
-                    if self._preset.properties().get("custom_metadata_camera_property", "") != "":
-                        try:
-                            camera = evaluate_expression(meta,
-                                                  self._preset.properties().get("custom_metadata_camera_property", ""))
-                            sg_shot['sg_camera_model'] = camera
-                        except:
-                            self.app.log_info("Unable to gather camera metadata")
+                if self._preset.properties().get("custom_metadata_tilt_property", "") != "":
+                    try:
+                        tilt = self.evaluate_expression(meta,
+                                              self._preset.properties().get("custom_metadata_tilt_property", ""))
+                        sg_shot['sg_tilt'] = tilt
+                    except:
+                        self.app.log_info("Unable to gather tilt metadata")
 
-                    if self._preset.properties().get("custom_metadata_shutter_property", "") != "":
-                        try:
-                            shutter = evaluate_expression(meta,
-                                                  self._preset.properties().get("custom_metadata_shutter_property", ""))
-                            sg_shot['sg_shutter'] = shutter
-                        except:
-                            self.app.log_info("Unable to gather shutter metadata")
+                if self._preset.properties().get("custom_metadata_roll_property", "") != "":
+                    try:
+                        roll = self.evaluate_expression(meta,
+                                              self._preset.properties().get("custom_metadata_roll_property", ""))
+                        sg_shot['sg_roll'] = roll
+                    except:
+                        self.app.log_info("Unable to gather roll metadata")
 
-                    if self._preset.properties().get("custom_metadata_lmt_property", "") != "":
-                        try:
-                            lmt = evaluate_expression(meta,
-                                                  self._preset.properties().get("custom_metadata_lmt_property", ""))
-                            sg_shot['sg_lmt'] = lmt
-                        except:
-                            self.app.log_info("Unable to gather lmt metadata")
+                width = meta['media.input.width']
+                height = meta['media.input.height']
+                sg_shot['sg_width'] = int(width)
+                sg_shot['sg_height'] = int(height)
 
-                    if self._preset.properties().get("custom_metadata_tilt_property", "") != "":
-                        try:
-                            tilt = evaluate_expression(meta,
-                                                  self._preset.properties().get("custom_metadata_tilt_property", ""))
-                            sg_shot['sg_tilt'] = tilt
-                        except:
-                            self.app.log_info("Unable to gather tilt metadata")
-
-                    if self._preset.properties().get("custom_metadata_roll_property", "") != "":
-                        try:
-                            roll = evaluate_expression(meta,
-                                                  self._preset.properties().get("custom_metadata_roll_property", ""))
-                            sg_shot['sg_roll'] = roll
-                        except:
-                            self.app.log_info("Unable to gather roll metadata")
-
-                    width = meta['media.input.width']
-                    height = meta['media.input.height']
-                    sg_shot['sg_width'] = int(width)
-                    sg_shot['sg_height'] = int(height)
-
-                except Exception as e:
-                    self.app.log_info(e)
-                    self.app.log_info("Unable to retrieve metadata")
+            except Exception as e:
+                self.app.log_info(e)
+                self.app.log_info("Unable to retrieve metadata")
 
         # commit the changes and update the thumbnail
         self.app.execute_hook_method(

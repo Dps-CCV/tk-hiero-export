@@ -18,7 +18,6 @@ class HieroUpdateCuts(HookBaseClass):
     This class defines methods that control if and how Cuts and CutItems
     are created or updated during the export process.
     """
-
     def allow_cut_updates(self, preset_properties):
         """
         Determines whether to process the associated Cut entity during
@@ -33,7 +32,7 @@ class HieroUpdateCuts(HookBaseClass):
         :returns: True to allow Cut updates, False to disallow.
         :rtype: bool
         """
-        return True
+        return preset_properties.get("custom_create_cut_bool_property")
 
     def create_cut_item(self, cut_item_data, preset_properties):
         """
@@ -53,11 +52,13 @@ class HieroUpdateCuts(HookBaseClass):
             no CutItem entity was created.
         :rtype: dict or None
         """
-        cut_item = self.parent.sgtk.shotgun.create("CutItem", cut_item_data)
-        self.parent.logger.info(
-            "Created CutItem in Flow Production Tracking: %s" % cut_item
-        )
-        return cut_item
+        if preset_properties.get("custom_create_cut_bool_property") == True:
+            cut_item = self.parent.sgtk.shotgun.create("CutItem", cut_item_data)
+            self.parent.logger.info("Created CutItem in Shotgun: %s" % cut_item)
+
+            return cut_item
+        else:
+            self.parent.logger.info("No Cut was created")
 
     def get_cut_thumbnail(self, cut, task_item, preset_properties):
         """

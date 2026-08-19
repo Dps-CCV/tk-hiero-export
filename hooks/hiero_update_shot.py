@@ -19,7 +19,6 @@ class HieroUpdateShot(HookBaseClass):
     in Shotgun, as well as whether and how the filesystem structure
     is created for a Shot during export.
     """
-
     def create_filesystem_structure(self, entity_type, entity_id, preset_properties):
         """
         Handles creating the filesystem structure for the shot that
@@ -41,9 +40,7 @@ class HieroUpdateShot(HookBaseClass):
         )
         self.parent.sgtk.create_filesystem_structure(entity_type, [entity_id])
 
-    def update_shotgun_shot_entity(
-        self, entity_type, entity_id, entity_data, preset_properties
-    ):
+    def update_shotgun_shot_entity(self, entity_type, entity_id, entity_data, preset_properties):
         """
         Handles updating the Shot entity in Shotgun with the new data produced
         during the export. The preset properties dictionary is provided to
@@ -57,7 +54,33 @@ class HieroUpdateShot(HookBaseClass):
         :param dict preset_properties: The export preset's properties
             dictionary.
         """
+        if not preset_properties.get("custom_cut_in_bool_property", True):
+            del entity_data["sg_cut_in"]
+        if not preset_properties.get("custom_cut_out_bool_property", True):
+            del entity_data["sg_cut_out"]
+        if not preset_properties.get("custom_head_in_bool_property", True):
+            del entity_data["sg_head_in"]
+        if not preset_properties.get("custom_tail_out_bool_property", True):
+            del entity_data["sg_tail_out"]
+        if not preset_properties.get("custom_metadata_bool_property", True):
+            if 'sg_width' in entity_data.keys():
+                del entity_data['sg_width']
+            if 'sg_height' in entity_data.keys():
+                del entity_data['sg_height']
+            if 'sg_focal_length_metadata' in entity_data.keys():
+                del entity_data['sg_focal_length_metadata']
+            if 'sg_reel_name' in entity_data.keys():
+                del entity_data['sg_reel_name']
+            if 'sg_iso' in entity_data.keys():
+                del entity_data['sg_iso']
+            if 'sg_wb' in entity_data.keys():
+                del entity_data['sg_wb']
+            if 'sg_camera_model' in entity_data.keys():
+                del entity_data['sg_camera_model']
+
         self.parent.logger.debug(
             "Updating info for %s %s: %s" % (entity_type, entity_id, entity_data)
         )
+
         self.parent.sgtk.shotgun.update(entity_type, entity_id, entity_data)
+

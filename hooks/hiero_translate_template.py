@@ -44,6 +44,7 @@ class HieroTranslateTemplate(Hook):
             "{Shot}": "{shot}",
             "{name}": "{clip}",
             "{version}": "{tk_version}",
+            "{Track}": "{track}",
         }
 
         # see if we have a value to use for Step
