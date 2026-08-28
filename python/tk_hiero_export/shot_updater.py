@@ -520,10 +520,28 @@ class ShotgunShotUpdater(
         if self._preset.properties().get("custom_cdls_bool_property", True):
             try:
                 cdl, lmt = self._export_cdl_lmt_effects()
-                if lmt != None:
-                    sg_shot['sg_lmt'] = lmt
-                if cdl != None:
-                    sg_shot['sg_cdl'] = cdl
+
+                if cdl is not None:
+                    cdl_path = os.path.join(cdl_folder, cdl + ".cc").replace("\\", "/")
+                    if os.path.isfile(cdl_path):
+                        sg_shot['sg_cdl'] = cdl
+                    else:
+                        self.app.log_info("CDL file not found on disk, skipping sg_cdl: {}".format(cdl_path))
+
+                if lmt is not None:
+                    # LMT can have any extension so just check the folder for any
+                    # file whose stem matches the lmt name
+                    lmt_found = False
+                    if lmt_folder and os.path.isdir(lmt_folder):
+                        for fname in os.listdir(lmt_folder):
+                            if os.path.splitext(fname)[0] == lmt:
+                                lmt_found = True
+                                break
+                    if lmt_found:
+                        sg_shot['sg_lmt'] = lmt
+                    else:
+                        self.app.log_info("LMT file not found on disk, skipping sg_lmt: {}".format(lmt))
+
             except Exception as e:
                 self.app.log_warning("CDL/LMT export failed for {}: {}".format(
                     self.shotName(), e))
